@@ -1,0 +1,9 @@
+vectorbt
+requests  # Keep for now, though we won't need it after switching
+pandas
+python-dotenv  # If not already added
+openalgo
+anywidget
+ta-lib
+numpy
+kaleido

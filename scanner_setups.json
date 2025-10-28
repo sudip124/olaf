@@ -1,0 +1,112 @@
+[
+    {
+        "symbol": "SUZLON",
+        "date": "2025-10-27",
+        "entry_price": 53.63,
+        "trigger_price": 53.13,
+        "tick_size": 0.05,
+        "true_range": 0.53,
+        "volume": 24397583,
+        "open_pos": 0.8868,
+        "close_pos": 0.1509
+    },
+    {
+        "symbol": "BEL",
+        "date": "2025-10-27",
+        "entry_price": 414.6,
+        "trigger_price": 414.1,
+        "tick_size": 0.05,
+        "true_range": 10.4,
+        "volume": 11925453,
+        "open_pos": 1.0,
+        "close_pos": 0.0577
+    },
+    {
+        "symbol": "SJVN",
+        "date": "2025-10-27",
+        "entry_price": 87.95,
+        "trigger_price": 87.45,
+        "tick_size": 0.05,
+        "true_range": 1.27,
+        "volume": 2166193,
+        "open_pos": 0.937,
+        "close_pos": 0.0787
+    },
+    {
+        "symbol": "GMDCLTD",
+        "date": "2025-10-27",
+        "entry_price": 575.8,
+        "trigger_price": 575.3,
+        "tick_size": 0.05,
+        "true_range": 11.95,
+        "volume": 1668022,
+        "open_pos": 0.9623,
+        "close_pos": 0.1632
+    },
+    {
+        "symbol": "FIRSTCRY",
+        "date": "2025-10-27",
+        "entry_price": 351.4,
+        "trigger_price": 350.9,
+        "tick_size": 0.05,
+        "true_range": 11.55,
+        "volume": 760000,
+        "open_pos": 0.9957,
+        "close_pos": 0.1385
+    },
+    {
+        "symbol": "HAL",
+        "date": "2025-10-27",
+        "entry_price": 4747.8,
+        "trigger_price": 4747.3,
+        "tick_size": 0.05,
+        "true_range": 82.2,
+        "volume": 732119,
+        "open_pos": 1.0,
+        "close_pos": 0.1363
+    },
+    {
+        "symbol": "TARIL",
+        "date": "2025-10-27",
+        "entry_price": 471.0,
+        "trigger_price": 470.5,
+        "tick_size": 0.05,
+        "true_range": 10.4,
+        "volume": 505312,
+        "open_pos": 0.9615,
+        "close_pos": 0.1202
+    },
+    {
+        "symbol": "LTFOODS",
+        "date": "2025-10-27",
+        "entry_price": 420.5,
+        "trigger_price": 420.0,
+        "tick_size": 0.05,
+        "true_range": 7.5,
+        "volume": 455137,
+        "open_pos": 0.9933,
+        "close_pos": 0.1867
+    },
+    {
+        "symbol": "SAILIFE",
+        "date": "2025-10-27",
+        "entry_price": 874.85,
+        "trigger_price": 874.35,
+        "tick_size": 0.05,
+        "true_range": 20.95,
+        "volume": 200877,
+        "open_pos": 0.9642,
+        "close_pos": 0.1074
+    },
+    {
+        "symbol": "AAVAS",
+        "date": "2025-10-27",
+        "entry_price": 1648.0,
+        "trigger_price": 1647.5,
+        "tick_size": 0.05,
+        "true_range": 58.9,
+        "volume": 122205,
+        "open_pos": 1.0,
+        "close_pos": 0.1902
+    }
+]

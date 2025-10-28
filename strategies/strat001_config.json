@@ -1,0 +1,17 @@
+{
+  "kc_length": 75,
+  "kc_mult": 2.25,
+  "adx_length": 75,
+  "adx_threshold": 20,
+  "adx_exit_threshold": 25,
+  "macd_fast": 3,
+  "macd_slow": 9,
+  "macd_signal": 16,
+  "use_stop_loss": true,
+  "stop_loss_mult": 2.0,
+  "use_trailing_sl": true,
+  "trailing_mult": 2.25,
+  "trailing_length": 20,
+  "trade_direction": "Long Only",
+  "tick": 0.10
+}

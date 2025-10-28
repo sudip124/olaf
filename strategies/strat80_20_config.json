@@ -1,0 +1,18 @@
+{
+    "stop_loss_mult": 2.0,
+    "take_profit_mult": 3.0,
+    "tick": 0.05,
+    "use_take_profit": false,
+    "open_pos_threshold": 0.8,
+    "close_pos_threshold": 0.2,
+    "trigger_tick_mult": 10,
+    "trigger_window_minutes": 60,
+    "opt_ranges": {
+        "stop_loss_mult": [1.0, 2.0, 2.5],
+        "take_profit_mult": [1.0, 2.0, 4.5],
+        "open_pos_threshold": [0.7, 0.8, 0.9],
+        "close_pos_threshold": [0.1, 0.2, 0.3],
+        "trigger_tick_mult": [5, 10, 15],
+        "trigger_window_minutes": [30, 60, 90]
+    }
+}

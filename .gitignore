@@ -1,0 +1,45 @@
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment variables
+.env
+.env.local
+
+# Logs and outputs
+logs/
+*.log
+*.csv  # If you have CSVs in logs or elsewhere that are generated
+
+# Local databases
+db/
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE/Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Miscellaneous
+*.bak
+*.tmp
+temp/
+tmp/
+
+# Project-specific ignores
+# Add any other generated files or directories here, e.g.,
+# backtest results, heatmaps, etc. if not already in logs/
