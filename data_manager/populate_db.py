@@ -1,7 +1,9 @@
 # populate_db.py
 import os
-from data_fetcher import fetch_historical_data
-from backtest_config import SYMBOLS, INTERVAL, FROM_DATE, TO_DATE, EXCHANGE
+from pathlib import Path
+from data_manager.data_fetcher import fetch_historical_data
+from data_manager.config import DB_PATH, ensure_directories
+from strategies.strat80_20.backtest_config import SYMBOLS, INTERVAL, FROM_DATE, TO_DATE, EXCHANGE
 
 def populate_database():
     """
@@ -9,13 +11,15 @@ def populate_database():
     Hardcoded: Uses SYMBOLS, INTERVAL ('15m'), FROM_DATE (200 days back), TO_DATE (today), EXCHANGE ('NSE').
     Since the DB is deleted/redone from scratch, this will refetch everything from OpenAlgo and populate tables.
     """
-    os.makedirs('db', exist_ok=True)  # Ensure db/ directory exists
+    ensure_directories()  # Ensure db/ and logs/ directories exist
+    # Additionally ensure DB folder
+    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     print(f"Populating DB with data from {FROM_DATE} to {TO_DATE} at {INTERVAL} interval for {len(SYMBOLS)} symbols...")
 
     for symbol in SYMBOLS:
         print(f"Processing {symbol}...")
         try:
-            df = fetch_historical_data(symbol, INTERVAL, FROM_DATE, TO_DATE, exchange=EXCHANGE)
+            df = fetch_historical_data(symbol, INTERVAL, FROM_DATE, TO_DATE)
             if df.empty:
                 print(f"No data available for {symbol} in the range.")
             else:

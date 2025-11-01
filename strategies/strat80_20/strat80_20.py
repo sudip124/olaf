@@ -2,71 +2,97 @@
 import pandas as pd
 import numpy as np
 import talib
-import json
 import os
-from backtest_config import SESSION_START  # No need for data_fetcher anymore
 import datetime
 
-def generate_signals(df: pd.DataFrame, symbol: str = '', logfile: str = None, **kwargs) -> tuple:
+def generate_signals(
+    df: pd.DataFrame, 
+    symbol: str = '', 
+    setup_days: list = None,
+    take_profit_mult: float = 3.0,
+    tick: float = 0.05,
+    use_take_profit: bool = True,
+    trigger_tick_mult: int = 10,
+    trigger_window_minutes: int = 60,
+    session_start: str = "09:15:00",
+    log: bool = False
+) -> tuple:
     """
-    Generate buy signals based on the modified 80-20 strategy: If the previous day's open is in the top 20% of the true range 
-    and close is in the bottom 20%, check the next day's 15m data. If the price drops 10 ticks below the previous day's low 
-    within the first 60 minutes, place a buy stop order at the previous day's low. Initial stop loss is the Day 2 low up 
-    to the entry point. Uses a loop for state management. Includes take profit based on true range.
+    Generate buy signals based on the 80-20 strategy for intraday execution.
     
-    Refactored to use provided 15m df and resample to daily for setup detection. No additional data fetching.
+    This function expects setup_days to be provided. Setup days are detected externally
+    by the scanner and passed in. The function handles the intraday execution logic:
+    - Monitors for trigger (price drops below threshold in first 60 minutes)
+    - Places entry order at previous day's low
+    - Manages stop loss and take profit
+    - Implements trailing stop loss on green bars
     
-    Added trailing stop loss: After entry, trail the stop loss to the low of each subsequent 15m green bar (close >= open),
-    moving it higher if the green bar's low is above the current stop loss.
-
-    Added configuration for use_take_profit: If False, do not exit on take_profit and rely solely on trailing stop loss.
+    Args:
+        df: 15-minute intraday DataFrame with OHLC data
+        symbol: Trading symbol (default: '')
+        setup_days: List of setup day dicts with setup_date, entry_price, trigger_price, true_range (default: None)
+        take_profit_mult: Take profit multiplier of risk (default: 3.0)
+        tick: Tick size for price rounding (default: 0.05)
+        use_take_profit: Whether to use take profit exits (default: True)
+        trigger_tick_mult: Multiplier for trigger threshold calculation (default: 10)
+        trigger_window_minutes: Time window in minutes to monitor for trigger (default: 60)
+        session_start: Session start time in HH:MM:SS format (default: "09:15:00")
+        log: Enable logging of signal events (default: False)
+    
+    Returns:
+        tuple: (order_size, order_price, signals_log) - pandas Series for vectorbt and list of log dicts
     """
-    # Load default parameters from JSON
-    config_path = os.path.join(os.path.dirname(__file__), 'strat80_20_config.json')
-    with open(config_path, 'r') as f:
-        params = json.load(f)
-    
-    # Override with provided kwargs
-    params.update(kwargs)
-
-    # Determine if logging is enabled
-    log = params.get('log', False)
+    # Initialize logging if enabled
     if log:
         signals_log = []  # List of dicts for structured logging
-
-    # Extract parameters
-    stop_loss_mult = params.get('stop_loss_mult', 2.0)  # Currently unused, but included for future/optimization
-    take_profit_mult = params.get('take_profit_mult', 3.0)
-    tick = params.get('tick', 0.05)  # Default tick size if not provided
-    use_take_profit = params.get('use_take_profit', True)  # New parameter to toggle take profit exits
-    open_pos_threshold = params.get('open_pos_threshold', 0.8)
-    close_pos_threshold = params.get('close_pos_threshold', 0.2)
-    trigger_tick_mult = params.get('trigger_tick_mult', 10)
-    trigger_window_minutes = params.get('trigger_window_minutes', 60)
-
-    # Ensure required columns
-    if 'open' not in df.columns:
-        df['open'] = df['close']  # Fallback if no open
-    if 'volume' not in df.columns:
-        df['volume'] = np.nan  # Fallback if no volume
-
-    # Resample 15m data to daily for setup detection
+    
+    # Setup days must be provided by caller (from scanner)
+    setup_days_input = setup_days
+    if not setup_days_input:
+        # If no setup days provided, return empty signals
+        order_size = pd.Series(0.0, index=df.index)
+        order_price = pd.Series(np.nan, index=df.index)
+        if log:
+            signals_log.append({
+                'timestamp': df.index[0] if len(df) > 0 else pd.Timestamp.now(),
+                'date': df.index[0].date() if len(df) > 0 else datetime.date.today(),
+                'time': df.index[0].time() if len(df) > 0 else datetime.datetime.now().time(),
+                'event': 'No Setup Days',
+                'symbol': symbol,
+                'price': 0,
+                'details': 'No setup days provided to generate_signals'
+            })
+        return order_size, order_price, signals_log if log else []
+    
+    # Convert setup_days to a dict mapping date -> setup info
+    # Expected format: list of dicts with keys: setup_date, entry_price, trigger_price, true_range, etc.
+    setup_dict = {}
+    for setup in setup_days_input:
+        if isinstance(setup, dict):
+            setup_date = pd.to_datetime(setup['setup_date']).date()
+            setup_dict[setup_date] = setup
+        else:
+            # If just dates are provided (backward compatibility)
+            setup_dict[setup] = {}
+    
+    # Get daily data for computing entry prices and true ranges
     daily_df = df.resample('D').agg({
         'open': 'first',
         'high': 'max',
         'low': 'min',
         'close': 'last',
         'volume': 'sum'
-    }).dropna()  # Drop non-trading days
-
-    # Compute true range and positions for setups
+    }).dropna()
+    
+    # Compute true range for days we need
     daily_df['prev_close'] = daily_df['close'].shift(1)
     daily_df['true_high'] = np.maximum(daily_df['high'], daily_df['prev_close'].fillna(daily_df['open']))
     daily_df['true_low'] = np.minimum(daily_df['low'], daily_df['prev_close'].fillna(daily_df['open']))
     daily_df['tr'] = daily_df['true_high'] - daily_df['true_low']
-    daily_df['open_pos'] = (daily_df['open'] - daily_df['true_low']) / daily_df['tr'].replace(0, np.nan)
-    daily_df['close_pos'] = (daily_df['close'] - daily_df['true_low']) / daily_df['tr'].replace(0, np.nan)
-    daily_df['setup_long'] = (daily_df['open_pos'] >= open_pos_threshold) & (daily_df['close_pos'] <= close_pos_threshold)
+
+    # Ensure required columns in df
+    if 'open' not in df.columns:
+        df['open'] = df['close']
 
     # Prepare signal series
     order_size = pd.Series(0.0, index=df.index)  # Size: +inf buy all, -inf sell all
@@ -85,7 +111,7 @@ def generate_signals(df: pd.DataFrame, symbol: str = '', logfile: str = None, **
     threshold = 0.0
     trigger_time = None
     day_low_so_far = np.inf
-    session_start = None
+    session_start_dt = None
     first60_end = None
     current_day = None
 
@@ -100,40 +126,49 @@ def generate_signals(df: pd.DataFrame, symbol: str = '', logfile: str = None, **
             trigger_time = None
             day_low_so_far = np.inf
 
-            # Check if previous day had setup
+            # Check if previous day had a setup
             prev_day = this_day - datetime.timedelta(days=1)
-            prev_day_times = daily_df.index[daily_df.index.date == prev_day]
-            if not prev_day_times.empty:
-                p_idx = prev_day_times[0]
-                if daily_df.at[p_idx, 'setup_long']:
-                    potential_entry = True
-                    entry_price = daily_df.at[p_idx, 'low']
-                    threshold = entry_price - trigger_tick_mult * tick
-                    entry_tr = daily_df.at[p_idx, 'tr']
+            if prev_day in setup_dict:
+                setup_info = setup_dict[prev_day]
+                potential_entry = True
+                
+                # Use provided entry price or compute from daily data
+                if 'entry_price' in setup_info:
+                    entry_price = setup_info['entry_price']
+                    entry_tr = setup_info.get('true_range', 0)
+                else:
+                    # Fallback: compute from daily_df
+                    prev_day_times = daily_df.index[daily_df.index.date == prev_day]
+                    if not prev_day_times.empty:
+                        p_idx = prev_day_times[0]
+                        entry_price = daily_df.at[p_idx, 'low']
+                        entry_tr = daily_df.at[p_idx, 'tr']
+                    else:
+                        potential_entry = False
+                        continue
+                
+                threshold = entry_price - trigger_tick_mult * tick
 
-                    if log:
-                        signals_log.append({
-                            'timestamp': p_idx,
-                            'date': p_idx.date().isoformat(),
-                            'time': p_idx.time().isoformat(),
-                            'event': 'Setup Detected',
-                            'symbol': symbol,
-                            'price': entry_price,
-                            'details': f"80-20 setup for next day entry at {entry_price}; threshold: {threshold}; TR: {entry_tr}"
-                        })
+                if log:
+                    signals_log.append({
+                        'timestamp': datetime.datetime.combine(prev_day, datetime.time(15, 30)),
+                        'date': prev_day.isoformat(),
+                        'time': '15:30:00',
+                        'event': 'Setup Detected',
+                        'symbol': symbol,
+                        'price': entry_price,
+                        'details': f"80-20 setup for next day entry at {entry_price}; threshold: {threshold}; TR: {entry_tr}"
+                    })
 
-                    # Set session times for the current day
-                    session_start_str = f"{this_day.isoformat()} {SESSION_START}"
-                    session_start = pd.to_datetime(session_start_str)
-                    first60_end = session_start + pd.Timedelta(minutes=trigger_window_minutes)
-
-                    # Handle timezone awareness
-                    if df.index.tz is not None and session_start.tzinfo is None:
-                        session_start = session_start.tz_localize(df.index.tz)
-                        first60_end = first60_end.tz_localize(df.index.tz)
-                    elif df.index.tz is not None and session_start.tzinfo is not None:
-                        session_start = session_start.tz_convert(df.index.tz)
-                        first60_end = first60_end.tz_convert(df.index.tz)
+                session_start_str = f"{this_day.isoformat()} {session_start}"
+                session_start_dt = pd.to_datetime(session_start_str)
+                first60_end = session_start_dt + pd.Timedelta(minutes=trigger_window_minutes)
+                if df.index.tz is not None and session_start_dt.tzinfo is None:
+                    session_start_dt = session_start_dt.tz_localize(df.index.tz)
+                    first60_end = first60_end.tz_localize(df.index.tz)
+                elif df.index.tz is not None and session_start_dt.tzinfo is not None:
+                    session_start_dt = session_start_dt.tz_convert(df.index.tz)
+                    first60_end = first60_end.tz_convert(df.index.tz)
 
             current_day = this_day
 
@@ -144,7 +179,7 @@ def generate_signals(df: pd.DataFrame, symbol: str = '', logfile: str = None, **
         # Entry logic
         if not in_long:
             if potential_entry:
-                if session_start <= this_time < first60_end:
+                if session_start_dt <= this_time < first60_end:
                     if df['low'].iloc[i] <= threshold and trigger_time is None:
                         trigger_time = this_time
                         if log:
@@ -244,12 +279,5 @@ def generate_signals(df: pd.DataFrame, symbol: str = '', logfile: str = None, **
                             'details': f"Updated from {old_sl} to {stop_loss} on green bar"
                         })
 
-    if log:
-        if logfile:
-            log_df = pd.DataFrame(signals_log)
-            log_df.to_csv(logfile, index=False)
-        else:
-            for entry in signals_log:
-                print(entry)
-
-    return order_size, order_price
+    # Return signals and logs
+    return order_size, order_price, signals_log if log else []

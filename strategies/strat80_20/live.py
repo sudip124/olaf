@@ -5,63 +5,57 @@ import datetime
 import threading
 import time
 from openalgo import api
-from backtest_config import OPENALGO_URL, API_KEY, SESSION_START, SESSION_END, EXCHANGE
-from strategies.strat80_20 import generate_signals  # Import to reuse params, but we'll adapt logic
+from data_manager.config import OPENALGO_URL, API_KEY, EXCHANGE
 import pytz  # Added for timezone handling
 import csv  # Added for CSV logging
 import logging  # Keep for errors/warnings
 
-# Timezone for Indian market (IST)
-IST = pytz.timezone('Asia/Kolkata')
+STRATEGY_NAME = "strat80_20"  # Define strategy name for API calls
 
-# Configure logging for errors/warnings
-os.makedirs('logs', exist_ok=True)
-today = datetime.date.today().isoformat()
-error_log_file = f'logs/live_strat80_20_errors_{today}.log'
-logging.basicConfig(
-    filename=error_log_file,
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Global variables to be set by start_trading()
+IST = None
+logger = None
+signals_logfile = None
+client = None
+take_profit_mult = None
+use_take_profit = None
+trigger_window_minutes = None
+FIXED_QTY = None
+PRODUCT_TYPE = None
+ORDER_VALIDITY = None
+live_run_id = None  # For database logging
 
-# CSV log file for events (similar to strat80_20.py)
-signals_logfile = f'logs/live_strat80_20_signals_{today}.csv'
-# Create file with header if not exists
-if not os.path.exists(signals_logfile):
-    with open(signals_logfile, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=['timestamp', 'date', 'time', 'event', 'symbol', 'price', 'details'])
-        writer.writeheader()
+def init_logging(timezone_str='Asia/Kolkata'):
+    """Initialize logging and timezone."""
+    global IST, logger, signals_logfile
+    
+    IST = pytz.timezone(timezone_str)
+    
+    # Configure logging for errors/warnings
+    os.makedirs('logs', exist_ok=True)
+    today = datetime.date.today().isoformat()
+    error_log_file = f'logs/live_strat80_20_errors_{today}.log'
+    logging.basicConfig(
+        filename=error_log_file,
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
+    
+    # CSV log file for events
+    signals_logfile = f'logs/live_strat80_20_signals_{today}.csv'
+    if not os.path.exists(signals_logfile):
+        with open(signals_logfile, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=['timestamp', 'date', 'time', 'event', 'symbol', 'price', 'details'])
+            writer.writeheader()
 
-def log_event(event_dict, logfile=signals_logfile):
+def log_event(event_dict, logfile=None):
     """Append event to CSV log file."""
+    if logfile is None:
+        logfile = signals_logfile
     with open(logfile, 'a', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=['timestamp', 'date', 'time', 'event', 'symbol', 'price', 'details'])
         writer.writerow(event_dict)
-
-# Initialize OpenAlgo client with WebSocket
-client = api(
-    api_key=API_KEY,
-    host=OPENALGO_URL,
-    ws_url="ws://127.0.0.1:8765"  # Adjust if different
-)
-
-# Load strategy config
-config_path = os.path.join(os.path.dirname(__file__), 'strategies', 'strat80_20_config.json')
-with open(config_path, 'r') as f:
-    params = json.load(f)
-
-# Global params from config
-stop_loss_mult = params.get('stop_loss_mult', 2.0)
-take_profit_mult = params.get('take_profit_mult', 3.0)
-use_take_profit = params.get('use_take_profit', False)
-trigger_window_minutes = params.get('trigger_window_minutes', 60)
-
-# Live trading params (add to config if needed)
-FIXED_QTY = 1  # Fixed quantity per trade; adjust based on risk management
-PRODUCT_TYPE = 'MIS'  # Intraday product for NSE
-ORDER_VALIDITY = 'DAY'
-STRATEGY_NAME = "strat80_20"  # Define strategy name for API calls
 
 # Per-symbol state class
 class SymbolState:
@@ -105,12 +99,18 @@ class SymbolState:
                     'low': [bar_low],
                     'close': [bar_close]
                 }, index=[self.current_bar_start])
-                self.bar_df = pd.concat([self.bar_df, new_bar])
+                
+                # Avoid FutureWarning by checking if DataFrame is empty
+                if self.bar_df.empty:
+                    self.bar_df = new_bar
+                else:
+                    self.bar_df = pd.concat([self.bar_df, new_bar])
 
                 # Update trailing SL if in position and green bar
-                if self.in_position and bar_close >= bar_open:
+                if self.in_position and self.stop_loss is not None and bar_close >= bar_open:
                     new_sl = bar_low - 1e-8
                     if new_sl > self.stop_loss:
+                        logger.info(f"[{self.symbol}] Trailing SL update: {self.stop_loss} -> {new_sl}")
                         log_event({
                             'timestamp': self.current_bar_start.isoformat(),
                             'date': self.current_bar_start.date().isoformat(),
@@ -118,7 +118,7 @@ class SymbolState:
                             'event': 'Trailing SL Update',
                             'symbol': self.symbol,
                             'price': new_sl,
-                            'details': f"Updated SL to {new_sl} on green bar"
+                            'details': f"Updated SL from {self.stop_loss} to {new_sl} on green bar (bar_low: {bar_low})"
                         })
                         self.stop_loss = new_sl
 
@@ -152,6 +152,20 @@ class SymbolState:
 
         # Monitor for exits (even without full bar)
         if self.in_position:
+            # Defensive check: ensure stop_loss is set
+            if self.stop_loss is None:
+                logger.error(f"[{self.symbol}] In position but stop_loss is None! Setting emergency SL.")
+                self.stop_loss = self.day_low - 1e-8
+                log_event({
+                    'timestamp': ts.isoformat(),
+                    'date': ts.date().isoformat(),
+                    'time': ts.time().isoformat(),
+                    'event': 'Emergency SL Set',
+                    'symbol': self.symbol,
+                    'price': self.stop_loss,
+                    'details': f"Stop loss was None, setting to day_low-epsilon: {self.stop_loss}"
+                })
+            
             if ltp <= self.stop_loss:
                 log_event({
                     'timestamp': ts.isoformat(),
@@ -164,7 +178,7 @@ class SymbolState:
                 })
                 self.place_sell_market()
                 self.reset_after_exit()  # Reset states after exit to prevent re-triggers
-            elif use_take_profit and ltp >= self.take_profit:
+            elif use_take_profit and self.take_profit is not None and ltp >= self.take_profit:
                 log_event({
                     'timestamp': ts.isoformat(),
                     'date': ts.date().isoformat(),
@@ -263,12 +277,15 @@ class SymbolState:
     # Callback for order updates (if filled)
     def on_order_update(self, update):
         if update['order_id'] == self.entry_order_id and update['status'] == 'filled':
-            fill_price = update['fill_price']  # Assume available
+            fill_price = float(update['fill_price'])  # Ensure it's a float
             self.in_position = True
             self.long_entry_price = fill_price
             risk = fill_price - self.day_low
             self.stop_loss = self.day_low - 1e-8
             self.take_profit = fill_price + take_profit_mult * risk if use_take_profit else None
+            
+            # Log with detailed info
+            logger.info(f"[{self.symbol}] Entry filled at {fill_price}, day_low={self.day_low}, risk={risk}, SL={self.stop_loss}, TP={self.take_profit}")
             log_event({
                 'timestamp': datetime.datetime.now(IST).isoformat(),
                 'date': datetime.date.today().isoformat(),
@@ -276,7 +293,7 @@ class SymbolState:
                 'event': 'Entry Filled',
                 'symbol': self.symbol,
                 'price': fill_price,
-                'details': f"SL: {self.stop_loss}, TP: {self.take_profit}"
+                'details': f"SL: {self.stop_loss} (day_low: {self.day_low}), TP: {self.take_profit}, risk: {risk}"
             })
 
     def reset_after_exit(self):
@@ -302,11 +319,10 @@ def on_order_update_received(update):
     if symbol in symbol_states:
         symbol_states[symbol].on_order_update(update)
 
-def load_setups(json_file):
-    with open(json_file, 'r') as f:
-        setups = json.load(f)
+def load_setups(setups_df):
+    """Load setups from DataFrame instead of JSON file."""
     instruments = []
-    for setup in setups:
+    for _, setup in setups_df.iterrows():
         symbol = setup['symbol']
         symbol_states[symbol] = SymbolState(
             symbol=symbol,
@@ -377,17 +393,76 @@ def poll_orders_and_positions():
 
         time.sleep(5)  # Poll every 5 seconds
 
-def start_trading(json_file):
-    instruments = load_setups(json_file)
+def start_trading(setups_df, timezone='Asia/Kolkata', fixed_qty=1, product_type='MIS', 
+                 order_validity='DAY', max_entries=None, take_profit_mult_param=3.0, 
+                 use_take_profit_param=False, trigger_window_minutes_param=60):
+    """Start live trading with given setups and parameters.
+    
+    Args:
+        setups_df: DataFrame with columns [symbol, entry_price, trigger_price, tick_size, true_range, ...]
+        timezone: Timezone string (default: 'Asia/Kolkata')
+        fixed_qty: Fixed quantity per trade (default: 1)
+        product_type: Product type for orders (default: 'MIS')
+        order_validity: Order validity (default: 'DAY')
+        max_entries: Maximum number of entries to trade (default: None for no limit)
+        take_profit_mult_param: Take profit multiplier (default: 3.0)
+        use_take_profit_param: Whether to use take profit (default: False)
+        trigger_window_minutes_param: Trigger window in minutes (default: 60)
+    """
+    global client, IST, take_profit_mult, use_take_profit, trigger_window_minutes
+    global FIXED_QTY, PRODUCT_TYPE, ORDER_VALIDITY, live_run_id
+    
+    # Initialize logging and timezone
+    init_logging(timezone)
+    
+    # Set global parameters
+    take_profit_mult = take_profit_mult_param
+    use_take_profit = use_take_profit_param
+    trigger_window_minutes = trigger_window_minutes_param
+    FIXED_QTY = fixed_qty
+    PRODUCT_TYPE = product_type
+    ORDER_VALIDITY = order_validity
+    
+    # Initialize OpenAlgo client
+    client = api(
+        api_key=API_KEY,
+        host=OPENALGO_URL,
+        ws_url="ws://127.0.0.1:8765"  # Adjust if different
+    )
+    
+    # Create live run entry in database
+    try:
+        from strategies.strat80_20.db_models import save_live_run
+        live_run_id = save_live_run(
+            symbols=setups_df['symbol'].tolist(),
+            timezone=timezone,
+            fixed_qty=fixed_qty,
+            product_type=product_type,
+            take_profit_mult=take_profit_mult,
+            use_take_profit=use_take_profit,
+            trigger_window_minutes=trigger_window_minutes,
+            strategy_name=STRATEGY_NAME
+        )
+        print(f"[Database] Live run saved with ID: {live_run_id}")
+    except Exception as db_error:
+        print(f"[Database] Warning: Failed to create live run: {db_error}")
+        live_run_id = None
+    
+    # Load setups from DataFrame
+    instruments = load_setups(setups_df)
+    
+    if not instruments:
+        print("[Live] No instruments to trade. Exiting.")
+        return
+    
     client.connect()
-    # Subscribe to LTP (unchanged)
+    # Subscribe to LTP
     client.subscribe_ltp(instruments, on_data_received=on_data_received)
-    # Remove: client.subscribe_orders(...) - not supported by SDK
-
+    
     # Start polling thread for order statuses and positions
     polling_thread = threading.Thread(target=poll_orders_and_positions, daemon=True)
     polling_thread.start()
-
+    
     # Wait for session start if early
     current_dt = datetime.datetime.now(IST)
     session_start_dt = current_dt.replace(hour=9, minute=15, second=0, microsecond=0)
@@ -403,7 +478,7 @@ def start_trading(json_file):
             'details': f"Waiting {wait_sec / 60:.1f} minutes for session start..."
         })
         time.sleep(wait_sec)
-
+    
     # Keep running until session end
     try:
         while True:
@@ -424,25 +499,4 @@ def start_trading(json_file):
     finally:
         client.unsubscribe_ltp(instruments)
         client.disconnect()
-
-if __name__ == "__main__":
-    # Use absolute path by joining with script directory
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    json_file = os.path.join(script_dir, "scanner_setups.json")
-    
-    if not os.path.exists(json_file):
-        logger.error(f"JSON file not found at: {json_file}")
-        logger.error(f"Current working directory: {os.getcwd()}")
-        logger.error("Please ensure scanner_setups.json exists in the same directory as this script")
-        exit(1)
-    else:
-        log_event({
-            'timestamp': datetime.datetime.now(IST).isoformat(),
-            'date': datetime.date.today().isoformat(),
-            'time': datetime.datetime.now(IST).time().isoformat(),
-            'event': 'Setup File Found',
-            'symbol': '',
-            'price': 0,
-            'details': f"Found setup file: {json_file}"
-        })
-        start_trading(json_file)
+        print(f"[Live] Trading session completed. Check logs for details.")

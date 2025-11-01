@@ -27,6 +27,9 @@ db/
 *.sqlite
 *.sqlite3
 
+# Strategy data directories (contains SQLite databases)
+strategies/*/data/
+
 # IDE/Editor files
 .idea/
 .vscode/

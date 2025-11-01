@@ -1,0 +1,33 @@
+timestamp,event,symbol,price,details
+2025-05-06 00:00:00+05:30,Setup Detected,PNB,91.36,80-20 setup for next day entry at 91.36; threshold: 90.36; TR: 6.040000000000006
+2025-05-08 00:00:00+05:30,Setup Detected,PNB,88.34,80-20 setup for next day entry at 88.34; threshold: 87.34; TR: 4.759999999999991
+2025-05-09 09:15:00+05:30,Trigger Threshold Hit,PNB,86.93,Price dropped below threshold 87.34; day_low_so_far: 86.93
+2025-05-09 09:30:00+05:30,Entry Filled,PNB,88.30000000000001,Long entry; SL: 86.92999999000001; TP: 90.355000015; risk: 1.3700000099999983
+2025-05-09 09:30:00+05:30,Trailing SL Update,PNB,88.13999999,Updated from 86.92999999000001 to 88.13999999 on green bar
+2025-05-09 09:45:00+05:30,Stop Loss Exit,PNB,88.10000000000001,Hit SL at 88.13999999
+2025-05-09 10:00:00+05:30,Entry Filled,PNB,88.30000000000001,Long entry; SL: 86.92999999000001; TP: 90.355000015; risk: 1.3700000099999983
+2025-05-09 10:00:00+05:30,Trailing SL Update,PNB,87.54999999,Updated from 86.92999999000001 to 87.54999999 on green bar
+2025-05-09 10:45:00+05:30,Trailing SL Update,PNB,87.89999999000001,Updated from 87.54999999 to 87.89999999000001 on green bar
+2025-05-09 11:00:00+05:30,Trailing SL Update,PNB,88.38999999,Updated from 87.89999999000001 to 88.38999999 on green bar
+2025-05-09 11:15:00+05:30,Trailing SL Update,PNB,88.68999999,Updated from 88.38999999 to 88.68999999 on green bar
+2025-05-09 11:45:00+05:30,Trailing SL Update,PNB,88.85999999,Updated from 88.68999999 to 88.85999999 on green bar
+2025-05-09 12:00:00+05:30,Trailing SL Update,PNB,89.22999999000001,Updated from 88.85999999 to 89.22999999000001 on green bar
+2025-05-09 13:00:00+05:30,Stop Loss Exit,PNB,89.2,Hit SL at 89.22999999000001
+2025-05-09 13:15:00+05:30,Entry Filled,PNB,88.30000000000001,Long entry; SL: 86.92999999000001; TP: 90.355000015; risk: 1.3700000099999983
+2025-05-09 13:30:00+05:30,Trailing SL Update,PNB,88.82999999,Updated from 86.92999999000001 to 88.82999999 on green bar
+2025-05-09 14:00:00+05:30,Trailing SL Update,PNB,88.96999999,Updated from 88.82999999 to 88.96999999 on green bar
+2025-05-09 14:15:00+05:30,Stop Loss Exit,PNB,89.0,Hit SL at 88.96999999
+2025-05-09 14:30:00+05:30,Entry Filled,PNB,88.30000000000001,Long entry; SL: 86.92999999000001; TP: 90.355000015; risk: 1.3700000099999983
+2025-05-09 14:30:00+05:30,Trailing SL Update,PNB,88.87999999,Updated from 86.92999999000001 to 88.87999999 on green bar
+2025-05-09 14:45:00+05:30,Trailing SL Update,PNB,89.09999999,Updated from 88.87999999 to 89.09999999 on green bar
+2025-05-09 15:15:00+05:30,Trailing SL Update,PNB,89.20999999,Updated from 89.09999999 to 89.20999999 on green bar
+2025-05-12 09:15:00+05:30,Take Profit Exit,PNB,92.80000000000001,Hit TP at 90.355000015
+2025-05-20 00:00:00+05:30,Setup Detected,PNB,97.38,80-20 setup for next day entry at 97.38; threshold: 96.38; TR: 1.990000000000009
+2025-06-10 00:00:00+05:30,Setup Detected,PNB,108.07,80-20 setup for next day entry at 108.07; threshold: 107.07; TR: 1.5
+2025-06-12 00:00:00+05:30,Setup Detected,PNB,104.57,80-20 setup for next day entry at 104.57; threshold: 103.57; TR: 3.160000000000011
+2025-06-13 09:15:00+05:30,Trigger Threshold Hit,PNB,102.24,Price dropped below threshold 103.57; day_low_so_far: 102.24
+2025-07-17 00:00:00+05:30,Setup Detected,PNB,113.1,80-20 setup for next day entry at 113.1; threshold: 112.1; TR: 2.5
+2025-07-22 00:00:00+05:30,Setup Detected,PNB,109.12,80-20 setup for next day entry at 109.12; threshold: 108.12; TR: 3.9799999999999898
+2025-09-04 00:00:00+05:30,Setup Detected,PNB,103.18,80-20 setup for next day entry at 103.18; threshold: 102.18; TR: 2.009999999999991
+2025-09-24 00:00:00+05:30,Setup Detected,PNB,110.61,80-20 setup for next day entry at 110.61; threshold: 109.61; TR: 3.8799999999999955
+2025-10-14 00:00:00+05:30,Setup Detected,PNB,114.91,80-20 setup for next day entry at 114.91; threshold: 113.91; TR: 2.430000000000007

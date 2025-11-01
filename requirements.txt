@@ -1,9 +1,10 @@
 vectorbt
-requests  # Keep for now, though we won't need it after switching
+requests
 pandas
-python-dotenv  # If not already added
+python-dotenv
 openalgo
 anywidget
 ta-lib
 numpy
 kaleido
+sqlalchemy
