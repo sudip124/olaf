@@ -10,11 +10,13 @@ def generate_signals(
     symbol: str = '', 
     setup_days: list = None,
     take_profit_mult: float = 3.0,
+    initial_sl_mult: float = 0.5,
     tick: float = 0.05,
     use_take_profit: bool = True,
     trigger_tick_mult: int = 10,
     trigger_window_minutes: int = 60,
     session_start: str = "09:15:00",
+    max_attempts: int = None,
     log: bool = False
 ) -> tuple:
     """
@@ -32,11 +34,13 @@ def generate_signals(
         symbol: Trading symbol (default: '')
         setup_days: List of setup day dicts with setup_date, entry_price, trigger_price, true_range (default: None)
         take_profit_mult: Take profit multiplier of risk (default: 3.0)
+        initial_sl_mult: Initial stop loss multiplier of true range (default: 0.5)
         tick: Tick size for price rounding (default: 0.05)
         use_take_profit: Whether to use take profit exits (default: True)
         trigger_tick_mult: Multiplier for trigger threshold calculation (default: 10)
         trigger_window_minutes: Time window in minutes to monitor for trigger (default: 60)
         session_start: Session start time in HH:MM:SS format (default: "09:15:00")
+        max_attempts: Maximum number of attempts allowed per day (default: None for unlimited)
         log: Enable logging of signal events (default: False)
     
     Returns:
@@ -108,12 +112,14 @@ def generate_signals(
     # Per-day state variables
     potential_entry = False
     entry_price = 0.0
+    entry_tr = 0.0
     threshold = 0.0
     trigger_time = None
     day_low_so_far = np.inf
     session_start_dt = None
     first60_end = None
     current_day = None
+    entries_today = 0  # Track number of entries taken today
 
     # Loop over 15m bars
     for i in range(len(df)):
@@ -125,6 +131,8 @@ def generate_signals(
             potential_entry = False
             trigger_time = None
             day_low_so_far = np.inf
+            entries_today = 0  # Reset entry counter for new day
+            entry_tr = 0.0  # Reset true range for new day
 
             # Check if previous day had a setup
             prev_day = this_day - datetime.timedelta(days=1)
@@ -194,7 +202,10 @@ def generate_signals(
                             })
 
                 if trigger_time is not None and this_time > trigger_time:
-                    if df['high'].iloc[i] >= entry_price:
+                    # Check if we can take an entry (max_attempts limit)
+                    can_enter = (max_attempts is None) or (entries_today < max_attempts)
+                    
+                    if can_enter and df['high'].iloc[i] >= entry_price:
                         fill_price = entry_price
                         fill_price = round(fill_price / tick) * tick
 
@@ -202,9 +213,11 @@ def generate_signals(
                         order_price.iloc[i] = fill_price
                         in_long = True
                         long_entry_price = fill_price
-                        stop_loss = day_low_so_far - 1e-8
+                        # New SL calculation: entry_price - (initial_sl_mult * true_range)
+                        stop_loss = long_entry_price - (initial_sl_mult * entry_tr)
                         risk = long_entry_price - stop_loss
                         take_profit = long_entry_price + take_profit_mult * risk
+                        entries_today += 1  # Increment entry counter
 
                         if log:
                             signals_log.append({
@@ -214,7 +227,19 @@ def generate_signals(
                                 'event': 'Entry Filled',
                                 'symbol': symbol,
                                 'price': fill_price,
-                                'details': f"Long entry; SL: {stop_loss}; TP: {take_profit} (use_take_profit: {use_take_profit}); risk: {risk}"
+                                'details': f"Long entry #{entries_today}; SL: {stop_loss} (entry - {initial_sl_mult}*TR); TP: {take_profit} (use_take_profit: {use_take_profit}); risk: {risk}; TR: {entry_tr}"
+                            })
+                    elif not can_enter and df['high'].iloc[i] >= entry_price:
+                        # Max attempts reached, log missed opportunity
+                        if log:
+                            signals_log.append({
+                                'timestamp': this_time,
+                                'date': this_time.date().isoformat(),
+                                'time': this_time.time().isoformat(),
+                                'event': 'Entry Skipped - Max Attempts Reached',
+                                'symbol': symbol,
+                                'price': df['high'].iloc[i],
+                                'details': f"Max attempts ({max_attempts}) already taken today. Entries: {entries_today}"
                             })
 
         # Trailing stop loss update and exit logic if in position
@@ -230,6 +255,7 @@ def generate_signals(
                 in_long = False
 
                 if log:
+                    can_retry = (max_attempts is None) or (entries_today < max_attempts)
                     signals_log.append({
                         'timestamp': this_time,
                         'date': this_time.date().isoformat(),
@@ -237,7 +263,7 @@ def generate_signals(
                         'event': 'Stop Loss Exit',
                         'symbol': symbol,
                         'price': exit_price,
-                        'details': f"Hit SL at {stop_loss}"
+                        'details': f"Hit SL at {stop_loss}. Entries today: {entries_today}/{max_attempts if max_attempts else 'unlimited'}. Can retry: {can_retry}"
                     })
 
                 continue  # Skip take profit if stopped out
@@ -252,6 +278,7 @@ def generate_signals(
                 in_long = False
 
                 if log:
+                    can_retry = (max_attempts is None) or (entries_today < max_attempts)
                     signals_log.append({
                         'timestamp': this_time,
                         'date': this_time.date().isoformat(),
@@ -259,7 +286,7 @@ def generate_signals(
                         'event': 'Take Profit Exit',
                         'symbol': symbol,
                         'price': exit_price,
-                        'details': f"Hit TP at {take_profit}"
+                        'details': f"Hit TP at {take_profit}. Entries today: {entries_today}/{max_attempts if max_attempts else 'unlimited'}. Can retry: {can_retry}"
                     })
                 continue
             # Update trailing stop loss if the current bar is green (close >= open)

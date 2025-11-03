@@ -39,9 +39,13 @@ def do_backtest(cfg: Dict[str, Any]) -> None:
     optimize: bool = bool(backtest_cfg.get("optimize", False))
     scan_interval: str = backtest_cfg.get("scan_interval", "D")
     backtest_interval: str = backtest_cfg.get("backtest_interval", "15m")
+    max_attempts = backtest_cfg.get("max_attempts")  # None means no limit
+    if max_attempts is not None:
+        max_attempts = int(max_attempts)
 
     print(f"[Backtest] strategy=strat80_20 optimize={optimize} symbols={symbols}")
     print(f"[Backtest] from_date={from_date} to_date={to_date} scan_interval={scan_interval} backtest_interval={backtest_interval}")
+    print(f"[Backtest] max_attempts={max_attempts}")
     
     run_backtest(
         symbols=symbols, 
@@ -49,7 +53,8 @@ def do_backtest(cfg: Dict[str, Any]) -> None:
         to_date=to_date,
         scan_interval=scan_interval,
         backtest_interval=backtest_interval,
-        optimize=optimize
+        optimize=optimize,
+        max_attempts=max_attempts
     )
 
 
@@ -97,15 +102,22 @@ def do_live(cfg: Dict[str, Any]) -> None:
         scan_interval = live_cfg.get("scan_interval", "D")
         volume_threshold = int(live_cfg.get("volume_threshold", 100000))
         sort_by_volume = bool(live_cfg.get("sort_by_volume", True))
-        max_entries = live_cfg.get("max_entries")  # None means no limit
-        if max_entries is not None:
-            max_entries = int(max_entries)
+        max_attempts = live_cfg.get("max_attempts")  # None means no limit
+        if max_attempts is not None:
+            max_attempts = int(max_attempts)
         
         # Trading parameters
         timezone = live_cfg.get("timezone", "Asia/Kolkata")
+        market_open_hour = int(live_cfg.get("market_open_hour", 9))
+        market_open_minute = int(live_cfg.get("market_open_minute", 15))
+        market_close_hour = int(live_cfg.get("market_close_hour", 15))
+        market_close_minute = int(live_cfg.get("market_close_minute", 30))
         fixed_qty = int(live_cfg.get("fixed_qty", 1))
         product_type = live_cfg.get("product_type", "MIS")
         order_validity = live_cfg.get("order_validity", "DAY")
+        max_order_retries = live_cfg.get("max_order_retries", 3)
+        if max_order_retries is not None:
+            max_order_retries = int(max_order_retries)
 
         # Load strategy config for trading parameters
         config_path = os.path.join(ROOT_DIR, 'strategies', 'strat80_20', 'strat_config.json')
@@ -121,7 +133,8 @@ def do_live(cfg: Dict[str, Any]) -> None:
 
         print(f"[Live] strategy={strategy} symbols={symbols}")
         print(f"[Live] scan_range={from_date}..{to_date} interval={scan_interval}")
-        print(f"[Live] timezone={timezone} fixed_qty={fixed_qty} product_type={product_type}")
+        print(f"[Live] timezone={timezone} market_hours={market_open_hour}:{market_open_minute:02d}-{market_close_hour}:{market_close_minute:02d}")
+        print(f"[Live] fixed_qty={fixed_qty} product_type={product_type} max_order_retries={max_order_retries}")
         
         # Phase 1: Get setups (either from config or by scanning)
         import pandas as pd
@@ -177,9 +190,9 @@ def do_live(cfg: Dict[str, Any]) -> None:
         if sort_by_volume:
             setups_df = setups_df.sort_values('volume', ascending=False)
         
-        if max_entries is not None and len(setups_df) > max_entries:
-            print(f"\n[Live] Found {len(setups_df)} setups, limiting to {max_entries} entries")
-            setups_df = setups_df.head(max_entries)
+        if max_attempts is not None and len(setups_df) > max_attempts:
+            print(f"\n[Live] Found {len(setups_df)} setups, limiting to {max_attempts} attempts")
+            setups_df = setups_df.head(max_attempts)
         
         print(f"\n[Live] Total setups to trade: {len(setups_df)}")
         if not setups_df.empty:
@@ -189,12 +202,18 @@ def do_live(cfg: Dict[str, Any]) -> None:
         print("\n[Live] Phase 2: Starting live trading...")
         start_trading(
             setups_df=setups_df,
-            timezone=timezone,
+            timezone_str=timezone,
+            market_open_hour=market_open_hour,
+            market_open_minute=market_open_minute,
+            market_close_hour=market_close_hour,
+            market_close_minute=market_close_minute,
             fixed_qty=fixed_qty,
             product_type=product_type,
             order_validity=order_validity,
-            max_entries=max_entries,
+            max_attempts=max_attempts,
+            max_order_retries=max_order_retries,
             take_profit_mult_param=strategy_params.get('take_profit_mult', 3.0),
+            initial_sl_mult_param=strategy_params.get('initial_sl_mult', 0.5),
             use_take_profit_param=strategy_params.get('use_take_profit', False),
             trigger_window_minutes_param=strategy_params.get('trigger_window_minutes', 60)
         )

@@ -13,7 +13,7 @@ from strategies.strat80_20.db_models import save_backtest_data, save_trade_logs,
 
 # analyze_logs function removed - now using analyze_logs_from_db from db_models
 
-def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interval='15m', optimize=False):
+def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interval='15m', optimize=False, max_attempts=None):
     """
     Run backtest for strat80_20 strategy.
     
@@ -24,6 +24,7 @@ def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interv
         scan_interval: Interval for setup day detection (default: 'D' for daily)
         backtest_interval: Interval for actual backtest (default: '15m')
         optimize: Whether to run parameter optimization (default: False)
+        max_attempts: Maximum number of attempts per day (default: None for unlimited)
     
     Returns:
         DataFrame with backtest results
@@ -39,6 +40,7 @@ def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interv
     print(f"Backtest Interval: {backtest_interval}")
     print(f"Symbols: {symbols}")
     print(f"Optimize: {optimize}")
+    print(f"Max Attempts Per Day: {max_attempts if max_attempts is not None else 'Unlimited'}")
     print(f"==========================================\n")
 
     # Phase 1: Fetch setup days using scanner on daily interval
@@ -141,11 +143,13 @@ def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interv
                     symbol=symbol,
                     setup_days=setup_days_map.get(symbol, []),
                     take_profit_mult=merged_params.get('take_profit_mult'),
+                    initial_sl_mult=merged_params.get('initial_sl_mult', 0.5),
                     tick=tick_size,
                     use_take_profit=merged_params.get('use_take_profit'),
                     trigger_tick_mult=merged_params.get('trigger_tick_mult'),
                     trigger_window_minutes=merged_params.get('trigger_window_minutes'),
                     session_start=SESSION_START,
+                    max_attempts=max_attempts,
                     log=False  # Don't log during optimization iterations
                 )
 
@@ -179,11 +183,13 @@ def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interv
                 symbol=symbol,
                 setup_days=setup_days_map.get(symbol, []),
                 take_profit_mult=final_params.get('take_profit_mult'),
+                initial_sl_mult=final_params.get('initial_sl_mult', 0.5),
                 tick=tick_size,
                 use_take_profit=final_params.get('use_take_profit'),
                 trigger_tick_mult=final_params.get('trigger_tick_mult'),
                 trigger_window_minutes=final_params.get('trigger_window_minutes'),
                 session_start=SESSION_START,
+                max_attempts=max_attempts,
                 log=True
             )
             all_trade_logs.extend(trade_logs)
@@ -194,11 +200,13 @@ def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interv
                 symbol=symbol,
                 setup_days=setup_days_map.get(symbol, []),
                 take_profit_mult=defaults.get('take_profit_mult'),
+                initial_sl_mult=defaults.get('initial_sl_mult', 0.5),
                 tick=tick_size,
                 use_take_profit=defaults.get('use_take_profit'),
                 trigger_tick_mult=defaults.get('trigger_tick_mult'),
                 trigger_window_minutes=defaults.get('trigger_window_minutes'),
                 session_start=SESSION_START,
+                max_attempts=max_attempts,
                 log=True
             )
             all_trade_logs.extend(trade_logs)

@@ -4,18 +4,6 @@
     "db_path": "db/nse.db",
     "scan": {
         "symbols": [
-            "HAL",
-            "BEL"
-        ],
-        "from_date": "2025-09-20",
-        "to_date": "2025-10-28",
-        "interval": "D",
-        "volume_threshold": 100000,
-        "sort_by_volume": true,
-        "output_file": "scanner_setups.json"
-    },
-    "backtest": {
-        "symbols": [
             "ABB",
             "ADANIPOWER",
             "AMBUJACEM",
@@ -68,42 +56,78 @@
             "JINDALSTEL",
             "MPHASIS"
         ],
-        "from_date": "2024-04-01",
-        "to_date": "2025-10-30",
+        "from_date": "2025-10-27",
+        "to_date": "2025-11-03",
+        "interval": "D",
+        "volume_threshold": 100000,
+        "sort_by_volume": true,
+        "output_file": "scanner_setups.json"
+    },
+    "backtest": {
+        "symbols": [
+            "ADANIPOWER",
+            "VEDL",
+            "PIDILITIND",
+            "MPHASIS",
+            "ICICIPRULI",
+            "SRF",
+            "DIXON",
+            "ABB"
+        ],
+        "from_date": "2025-04-01",
+        "to_date": "2025-10-31",
         "scan_interval": "D",
         "backtest_interval": "15m",
-        "optimize": false
+        "optimize": false,
+        "max_attempts": 2
     },
     "live": {
-        "max_entries": 2,
+        "max_attempts": 3,
+        "max_order_retries": 3,
         "timezone": "Asia/Kolkata",
-        "fixed_qty": 25,
+        "market_open_hour": 9,
+        "market_open_minute": 15,
+        "market_close_hour": 15,
+        "market_close_minute": 30,
+        "fixed_qty": 2,
         "product_type": "MIS",
         "order_validity": "DAY",
         "setups": [
             {
-                "symbol": "POWERGRID",
-                "setup_date": "2025-10-30",
-                "entry_date": "2025-10-31",
-                "entry_price": 290.95,
-                "trigger_price": 290.45,
+                "symbol": "MPHASIS",
+                "setup_date": "2025-10-31",
+                "entry_date": "2025-11-03",
+                "entry_price": 2752.0,
+                "trigger_price": 2751.0,
                 "tick_size": 0.05,
-                "true_range": 5.5,
-                "volume": 10306210,
-                "open_pos": 0.97,
-                "close_pos": 0.03
+                "true_range": 107.5,
+                "volume": 0,
+                "open_pos": 0.8,
+                "close_pos": 0.2
             },
             {
-                "symbol": "RECLTD",
-                "setup_date": "2025-10-30",
-                "entry_date": "2025-10-31",
-                "entry_price": 377.2,
-                "trigger_price": 376.7,
+                "symbol": "SRF",
+                "setup_date": "2025-10-31",
+                "entry_date": "2025-11-03",
+                "entry_price": 2921.4,
+                "trigger_price": 2920.4,
                 "tick_size": 0.05,
-                "true_range": 10.3,
-                "volume": 934094,
-                "open_pos": 0.31,
-                "close_pos": 0.69
+                "true_range": 87.90000000000009,
+                "volume": 0,
+                "open_pos": 0.8,
+                "close_pos": 0.2
+            },
+            {
+                "symbol": "DIXON",
+                "setup_date": "2025-10-31",
+                "entry_date": "2025-11-03",
+                "entry_price": 15463.0,
+                "trigger_price": 15462.0,
+                "tick_size": 0.05,
+                "true_range": 719.0,
+                "volume": 0,
+                "open_pos": 0.8,
+                "close_pos": 0.2
             }
         ]
     }

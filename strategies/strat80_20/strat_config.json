@@ -1,5 +1,6 @@
 {
     "take_profit_mult": 3.0,
+    "initial_sl_mult": 0.5,
     "tick": 0.05,
     "use_take_profit": false,
     "trigger_tick_mult": 10,

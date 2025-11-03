@@ -46,3 +46,5 @@ tmp/
 # Project-specific ignores
 # Add any other generated files or directories here, e.g.,
 # backtest results, heatmaps, etc. if not already in logs/
+strategies/strat80_20/REFACTORING_NOTES.md
+strategies/strat80_20/new.py

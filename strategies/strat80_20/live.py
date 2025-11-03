@@ -1,35 +1,52 @@
-import json
 import os
 import pandas as pd
 import datetime
 import threading
 import time
+import pytz
+import csv
+import logging
 from openalgo import api
 from data_manager.config import OPENALGO_URL, API_KEY, EXCHANGE
-import pytz  # Added for timezone handling
-import csv  # Added for CSV logging
-import logging  # Keep for errors/warnings
+from .live_config import STRATEGY_NAME, WS_URL
+from . import live_symbol_state as live_symbol_state
+from .live_symbol_state import SymbolState
 
-STRATEGY_NAME = "strat80_20"  # Define strategy name for API calls
-
-# Global variables to be set by start_trading()
-IST = None
+# Global runtime variables (set by start_trading)
 logger = None
 signals_logfile = None
 client = None
-take_profit_mult = None
-use_take_profit = None
-trigger_window_minutes = None
-FIXED_QTY = None
-PRODUCT_TYPE = None
-ORDER_VALIDITY = None
-live_run_id = None  # For database logging
+live_run_id = None
+timezone = None
 
-def init_logging(timezone_str='Asia/Kolkata'):
-    """Initialize logging and timezone."""
-    global IST, logger, signals_logfile
+def is_market_open(ts=None, market_open_hour=9, market_open_minute=15, 
+                   market_close_hour=15, market_close_minute=30):
+    """Check if market is currently open.
     
-    IST = pytz.timezone(timezone_str)
+    Args:
+        ts: datetime object (timezone aware). If None, uses current time in configured timezone.
+        market_open_hour: Market open hour
+        market_open_minute: Market open minute
+        market_close_hour: Market close hour
+        market_close_minute: Market close minute
+    
+    Returns:
+        True if market is open, False otherwise.
+    """
+    if ts is None:
+        ts = datetime.datetime.now(timezone)
+    elif ts.tzinfo is None:
+        ts = timezone.localize(ts)
+    
+    # Market hours are configurable
+    market_open = ts.replace(hour=market_open_hour, minute=market_open_minute, second=0, microsecond=0)
+    market_close = ts.replace(hour=market_close_hour, minute=market_close_minute, second=0, microsecond=0)
+    
+    return market_open <= ts < market_close
+
+def init_logging():
+    """Initialize logging."""
+    global logger, signals_logfile
     
     # Configure logging for errors/warnings
     os.makedirs('logs', exist_ok=True)
@@ -57,259 +74,13 @@ def log_event(event_dict, logfile=None):
         writer = csv.DictWriter(f, fieldnames=['timestamp', 'date', 'time', 'event', 'symbol', 'price', 'details'])
         writer.writerow(event_dict)
 
-# Per-symbol state class
-class SymbolState:
-    def __init__(self, symbol, entry_price, trigger_price, tick_size, true_range):
-        self.symbol = symbol
-        self.entry_price = entry_price
-        self.trigger_price = trigger_price
-        self.tick_size = tick_size
-        self.true_range = true_range
-        self.triggered = False
-        self.trigger_time = None
-        self.day_low = float('inf')
-        self.in_position = False
-        self.long_entry_price = None
-        self.stop_loss = None
-        self.take_profit = None
-        self.ticks = []  # List of {'time': ts, 'price': ltp}
-        self.bar_df = pd.DataFrame(columns=['open', 'high', 'low', 'close'])  # Historical 15m bars for today
-        self.current_bar_start = None
-        self.current_bar_ticks = []
-        self.entry_order_id = None  # For tracking buy stop order
-
-    def process_tick(self, ts, ltp):
-        # Update day_low
-        self.day_low = min(self.day_low, ltp)
-
-        # Determine 15m bar start
-        bar_start = ts.floor('15min')
-
-        # If new bar, finalize previous
-        if self.current_bar_start is not None and bar_start != self.current_bar_start:
-            if self.current_bar_ticks:
-                bar_prices = [t['price'] for t in self.current_bar_ticks]
-                bar_open = self.current_bar_ticks[0]['price']
-                bar_high = max(bar_prices)
-                bar_low = min(bar_prices)
-                bar_close = self.current_bar_ticks[-1]['price']
-                new_bar = pd.DataFrame({
-                    'open': [bar_open],
-                    'high': [bar_high],
-                    'low': [bar_low],
-                    'close': [bar_close]
-                }, index=[self.current_bar_start])
-                
-                # Avoid FutureWarning by checking if DataFrame is empty
-                if self.bar_df.empty:
-                    self.bar_df = new_bar
-                else:
-                    self.bar_df = pd.concat([self.bar_df, new_bar])
-
-                # Update trailing SL if in position and green bar
-                if self.in_position and self.stop_loss is not None and bar_close >= bar_open:
-                    new_sl = bar_low - 1e-8
-                    if new_sl > self.stop_loss:
-                        logger.info(f"[{self.symbol}] Trailing SL update: {self.stop_loss} -> {new_sl}")
-                        log_event({
-                            'timestamp': self.current_bar_start.isoformat(),
-                            'date': self.current_bar_start.date().isoformat(),
-                            'time': self.current_bar_start.time().isoformat(),
-                            'event': 'Trailing SL Update',
-                            'symbol': self.symbol,
-                            'price': new_sl,
-                            'details': f"Updated SL from {self.stop_loss} to {new_sl} on green bar (bar_low: {bar_low})"
-                        })
-                        self.stop_loss = new_sl
-
-            # Reset for new bar
-            self.current_bar_ticks = []
-            self.current_bar_start = bar_start
-
-        # Add to current bar
-        self.current_bar_ticks.append({'time': ts, 'price': ltp})
-        if self.current_bar_start is None:
-            self.current_bar_start = bar_start
-
-        # Strategy logic
-        session_start_dt = IST.localize(datetime.datetime(ts.year, ts.month, ts.day, 9, 15, 0))
-        first60_end = session_start_dt + datetime.timedelta(minutes=trigger_window_minutes)
-
-        if not self.triggered and ts < first60_end and ltp <= self.trigger_price:
-            self.triggered = True
-            self.trigger_time = ts
-            log_event({
-                'timestamp': ts.isoformat(),
-                'date': ts.date().isoformat(),
-                'time': ts.time().isoformat(),
-                'event': 'Trigger Threshold Hit',
-                'symbol': self.symbol,
-                'price': ltp,
-                'details': f"Price dropped below threshold {self.trigger_price}; day_low_so_far: {self.day_low}"
-            })
-            # Place buy SL-M order
-            self.place_buy_stop()
-
-        # Monitor for exits (even without full bar)
-        if self.in_position:
-            # Defensive check: ensure stop_loss is set
-            if self.stop_loss is None:
-                logger.error(f"[{self.symbol}] In position but stop_loss is None! Setting emergency SL.")
-                self.stop_loss = self.day_low - 1e-8
-                log_event({
-                    'timestamp': ts.isoformat(),
-                    'date': ts.date().isoformat(),
-                    'time': ts.time().isoformat(),
-                    'event': 'Emergency SL Set',
-                    'symbol': self.symbol,
-                    'price': self.stop_loss,
-                    'details': f"Stop loss was None, setting to day_low-epsilon: {self.stop_loss}"
-                })
-            
-            if ltp <= self.stop_loss:
-                log_event({
-                    'timestamp': ts.isoformat(),
-                    'date': ts.date().isoformat(),
-                    'time': ts.time().isoformat(),
-                    'event': 'Stop Loss Exit',
-                    'symbol': self.symbol,
-                    'price': ltp,
-                    'details': f"Hit SL at {self.stop_loss}"
-                })
-                self.place_sell_market()
-                self.reset_after_exit()  # Reset states after exit to prevent re-triggers
-            elif use_take_profit and self.take_profit is not None and ltp >= self.take_profit:
-                log_event({
-                    'timestamp': ts.isoformat(),
-                    'date': ts.date().isoformat(),
-                    'time': ts.time().isoformat(),
-                    'event': 'Take Profit Exit',
-                    'symbol': self.symbol,
-                    'price': ltp,
-                    'details': f"Hit TP at {self.take_profit}"
-                })
-                self.place_sell_market()
-                self.reset_after_exit()  # Reset states after exit to prevent re-triggers
-
-    def place_buy_stop(self):
-        try:
-            response = client.placeorder(
-                strategy=STRATEGY_NAME,
-                exchange=EXCHANGE,
-                symbol=self.symbol,
-                action='BUY',
-                product=PRODUCT_TYPE,
-                price_type='SL-M',
-                quantity=FIXED_QTY,
-                price=0,
-                trigger_price=self.entry_price
-            )
-            # Accept multiple possible keys for order id returned by SDK
-            self.entry_order_id = (
-                response.get('order_id') or response.get('orderid') or
-                response.get('orderId') or response.get('data', {}).get('order_id')
-            )
-            log_event({
-                'timestamp': datetime.datetime.now(IST).isoformat(),
-                'date': datetime.date.today().isoformat(),
-                'time': datetime.datetime.now(IST).time().isoformat(),
-                'event': 'Buy Stop Order Placed',
-                'symbol': self.symbol,
-                'price': self.entry_price,
-                'details': f"Response: {response}; order_id={self.entry_order_id}"
-            })
-        except Exception as e:
-            logger.error(f"[{self.symbol}] Error placing buy stop: {e}")
-
-    def place_sell_market(self):
-        if not self.in_position:  # Extra check to prevent selling when not in position
-            logger.warning(f"[{self.symbol}] Skipping sell market: not in position")
-            return
-        try:
-            response = client.placeorder(
-                strategy=STRATEGY_NAME,  # Optional
-                exchange=EXCHANGE,
-                symbol=self.symbol,
-                action='SELL',  # Uppercase
-                product=PRODUCT_TYPE,
-                price_type='MARKET',  # Changed from 'order_type'
-                quantity=FIXED_QTY,
-                price=0,
-                trigger_price=0
-            )
-            log_event({
-                'timestamp': datetime.datetime.now(IST).isoformat(),
-                'date': datetime.date.today().isoformat(),
-                'time': datetime.datetime.now(IST).time().isoformat(),
-                'event': 'Sell Market Order Placed',
-                'symbol': self.symbol,
-                'price': 0,  # Market price
-                'details': f"Response: {response}"
-            })
-        except Exception as e:
-            logger.error(f"[{self.symbol}] Error placing sell market: {e}")
-
-    def place_buy_market(self):  # Added to square off unintended shorts
-        try:
-            response = client.placeorder(
-                strategy=STRATEGY_NAME,
-                exchange=EXCHANGE,
-                symbol=self.symbol,
-                action='BUY',
-                product=PRODUCT_TYPE,
-                price_type='MARKET',
-                quantity=FIXED_QTY,
-                price=0,
-                trigger_price=0
-            )
-            log_event({
-                'timestamp': datetime.datetime.now(IST).isoformat(),
-                'date': datetime.date.today().isoformat(),
-                'time': datetime.datetime.now(IST).time().isoformat(),
-                'event': 'Buy Market Order Placed (Square Off)',
-                'symbol': self.symbol,
-                'price': 0,  # Market price
-                'details': f"Response: {response}"
-            })
-        except Exception as e:
-            logger.error(f"[{self.symbol}] Error placing buy market to square off: {e}")
-
-    # Callback for order updates (if filled)
-    def on_order_update(self, update):
-        if update['order_id'] == self.entry_order_id and update['status'] == 'filled':
-            fill_price = float(update['fill_price'])  # Ensure it's a float
-            self.in_position = True
-            self.long_entry_price = fill_price
-            risk = fill_price - self.day_low
-            self.stop_loss = self.day_low - 1e-8
-            self.take_profit = fill_price + take_profit_mult * risk if use_take_profit else None
-            
-            # Log with detailed info
-            logger.info(f"[{self.symbol}] Entry filled at {fill_price}, day_low={self.day_low}, risk={risk}, SL={self.stop_loss}, TP={self.take_profit}")
-            log_event({
-                'timestamp': datetime.datetime.now(IST).isoformat(),
-                'date': datetime.date.today().isoformat(),
-                'time': datetime.datetime.now(IST).time().isoformat(),
-                'event': 'Entry Filled',
-                'symbol': self.symbol,
-                'price': fill_price,
-                'details': f"SL: {self.stop_loss} (day_low: {self.day_low}), TP: {self.take_profit}, risk: {risk}"
-            })
-
-    def reset_after_exit(self):
-        self.in_position = False
-        self.long_entry_price = None
-        self.stop_loss = None
-        self.take_profit = None
-        # Do not reset triggered or day_low, as re-entries are not allowed per day
-
 # Global dict of symbol states
 symbol_states = {}
 
 def on_data_received(data):
     symbol = data['symbol']
     ltp = data['data']['ltp']
-    ts = pd.to_datetime(data['data']['timestamp'], unit='ms', utc=True).astimezone(IST)
+    ts = pd.to_datetime(data['data']['timestamp'], unit='ms', utc=True).astimezone(timezone)
     if symbol in symbol_states:
         symbol_states[symbol].process_tick(ts, ltp)
 
@@ -319,8 +90,10 @@ def on_order_update_received(update):
     if symbol in symbol_states:
         symbol_states[symbol].on_order_update(update)
 
-def load_setups(setups_df):
-    """Load setups from DataFrame instead of JSON file."""
+def load_setups(setups_df, market_open_hour, market_open_minute, market_close_hour, market_close_minute,
+                fixed_qty, product_type, take_profit_mult, initial_sl_mult, 
+                use_take_profit, trigger_window_minutes, max_attempts, max_order_retries):
+    """Load setups from DataFrame and create SymbolState instances."""
     instruments = []
     for _, setup in setups_df.iterrows():
         symbol = setup['symbol']
@@ -329,13 +102,26 @@ def load_setups(setups_df):
             entry_price=setup['entry_price'],
             trigger_price=setup['trigger_price'],
             tick_size=setup['tick_size'],
-            true_range=setup['true_range']
+            true_range=setup['true_range'],
+            market_open_hour=market_open_hour,
+            market_open_minute=market_open_minute,
+            market_close_hour=market_close_hour,
+            market_close_minute=market_close_minute,
+            fixed_qty=fixed_qty,
+            product_type=product_type,
+            take_profit_mult=take_profit_mult,
+            initial_sl_mult=initial_sl_mult,
+            use_take_profit=use_take_profit,
+            trigger_window_minutes=trigger_window_minutes,
+            max_attempts=max_attempts,
+            max_order_retries=max_order_retries
         )
         instruments.append({"exchange": EXCHANGE, "symbol": symbol})
+        now = datetime.datetime.now(timezone)
         log_event({
-            'timestamp': datetime.datetime.now(IST).isoformat(),
-            'date': datetime.date.today().isoformat(),
-            'time': datetime.datetime.now(IST).time().isoformat(),
+            'timestamp': now.isoformat(),
+            'date': now.date().isoformat(),
+            'time': now.time().isoformat(),
             'event': 'Setup Loaded',
             'symbol': symbol,
             'price': setup['entry_price'],
@@ -345,6 +131,8 @@ def load_setups(setups_df):
 
 def poll_orders_and_positions():
     while True:
+        current_time = datetime.datetime.now(timezone)
+        
         # Poll positions to sync in_position and handle unintended shorts
         try:
             position_response = client.positionbook()
@@ -357,7 +145,8 @@ def poll_orders_and_positions():
             logger.error(f"Error fetching positionbook: {e}")
             positions = []
 
-        pos_dict = {pos['symbol']: int(pos.get('netqty', 0)) for pos in positions if pos.get('product') == PRODUCT_TYPE}
+        # Build position dict - check product type per state since it may vary
+        pos_dict = {pos['symbol']: int(pos.get('netqty', 0)) for pos in positions}
 
         for symbol, state in symbol_states.items():
             qty = pos_dict.get(symbol, 0)
@@ -369,6 +158,17 @@ def poll_orders_and_positions():
                 state.in_position = False
             else:
                 state.in_position = False
+
+            # Check for pending retries when market is open
+            # This handles cases where orders were rejected before market open
+            if (state.pending_retry and not state.in_position and 
+                state.entry_order_id is None and is_market_open(current_time, state.market_open_hour, 
+                                                                 state.market_open_minute, state.market_close_hour, 
+                                                                 state.market_close_minute)):
+                can_retry = (state.max_attempts is None) or (state.entries_today < state.max_attempts)
+                if can_retry and state.triggered:
+                    logger.info(f"[{symbol}] Retrying order placement after market open")
+                    state.place_buy_stop(current_time)
 
             # Poll entry order status if pending
             if state.entry_order_id and not state.in_position:
@@ -393,54 +193,68 @@ def poll_orders_and_positions():
 
         time.sleep(5)  # Poll every 5 seconds
 
-def start_trading(setups_df, timezone='Asia/Kolkata', fixed_qty=1, product_type='MIS', 
-                 order_validity='DAY', max_entries=None, take_profit_mult_param=3.0, 
-                 use_take_profit_param=False, trigger_window_minutes_param=60):
+def start_trading(setups_df, timezone_str='Asia/Kolkata', market_open_hour=9, 
+                 market_open_minute=15, market_close_hour=15, market_close_minute=30,
+                 fixed_qty=1, product_type='MIS', order_validity='DAY', 
+                 max_attempts=None, max_order_retries=3,
+                 take_profit_mult_param=3.0, initial_sl_mult_param=0.5, 
+                 use_take_profit_param=False, trigger_window_minutes_param=60,
+                 ws_url=None):
     """Start live trading with given setups and parameters.
     
     Args:
         setups_df: DataFrame with columns [symbol, entry_price, trigger_price, tick_size, true_range, ...]
-        timezone: Timezone string (default: 'Asia/Kolkata')
+        timezone_str: Timezone string (default: 'Asia/Kolkata')
+        market_open_hour: Market open hour (default: 9)
+        market_open_minute: Market open minute (default: 15)
+        market_close_hour: Market close hour (default: 15)
+        market_close_minute: Market close minute (default: 30)
         fixed_qty: Fixed quantity per trade (default: 1)
         product_type: Product type for orders (default: 'MIS')
         order_validity: Order validity (default: 'DAY')
-        max_entries: Maximum number of entries to trade (default: None for no limit)
+        max_attempts: Maximum number of entry attempts per symbol per day (default: None for no limit)
+        max_order_retries: Maximum retry attempts for failed orders (default: 3, None for unlimited)
         take_profit_mult_param: Take profit multiplier (default: 3.0)
+        initial_sl_mult_param: Initial stop loss multiplier of true range (default: 0.5)
         use_take_profit_param: Whether to use take profit (default: False)
         trigger_window_minutes_param: Trigger window in minutes (default: 60)
+        ws_url: WebSocket URL (default: from live_config.WS_URL)
     """
-    global client, IST, take_profit_mult, use_take_profit, trigger_window_minutes
-    global FIXED_QTY, PRODUCT_TYPE, ORDER_VALIDITY, live_run_id
+    global client, timezone, live_run_id
     
-    # Initialize logging and timezone
-    init_logging(timezone)
+    # Use config default for ws_url if not provided
+    if ws_url is None:
+        ws_url = WS_URL
     
-    # Set global parameters
-    take_profit_mult = take_profit_mult_param
-    use_take_profit = use_take_profit_param
-    trigger_window_minutes = trigger_window_minutes_param
-    FIXED_QTY = fixed_qty
-    PRODUCT_TYPE = product_type
-    ORDER_VALIDITY = order_validity
+    # Initialize timezone
+    timezone = pytz.timezone(timezone_str)
+    
+    # Initialize logging
+    init_logging()
     
     # Initialize OpenAlgo client
     client = api(
         api_key=API_KEY,
         host=OPENALGO_URL,
-        ws_url="ws://127.0.0.1:8765"  # Adjust if different
+        ws_url=ws_url
     )
+    live_symbol_state.logger = logger
+    live_symbol_state.client = client
+    live_symbol_state.timezone = timezone
+    live_symbol_state.log_event = log_event
+    live_symbol_state.is_market_open = is_market_open
     
     # Create live run entry in database
     try:
-        from strategies.strat80_20.db_models import save_live_run
+        from .db_models import save_live_run
         live_run_id = save_live_run(
             symbols=setups_df['symbol'].tolist(),
-            timezone=timezone,
+            timezone=timezone_str,
             fixed_qty=fixed_qty,
             product_type=product_type,
-            take_profit_mult=take_profit_mult,
-            use_take_profit=use_take_profit,
-            trigger_window_minutes=trigger_window_minutes,
+            take_profit_mult=take_profit_mult_param,
+            use_take_profit=use_take_profit_param,
+            trigger_window_minutes=trigger_window_minutes_param,
             strategy_name=STRATEGY_NAME
         )
         print(f"[Database] Live run saved with ID: {live_run_id}")
@@ -449,7 +263,21 @@ def start_trading(setups_df, timezone='Asia/Kolkata', fixed_qty=1, product_type=
         live_run_id = None
     
     # Load setups from DataFrame
-    instruments = load_setups(setups_df)
+    instruments = load_setups(
+        setups_df=setups_df,
+        market_open_hour=market_open_hour,
+        market_open_minute=market_open_minute,
+        market_close_hour=market_close_hour,
+        market_close_minute=market_close_minute,
+        fixed_qty=fixed_qty,
+        product_type=product_type,
+        take_profit_mult=take_profit_mult_param,
+        initial_sl_mult=initial_sl_mult_param,
+        use_take_profit=use_take_profit_param,
+        trigger_window_minutes=trigger_window_minutes_param,
+        max_attempts=max_attempts,
+        max_order_retries=max_order_retries
+    )
     
     if not instruments:
         print("[Live] No instruments to trade. Exiting.")
@@ -464,8 +292,8 @@ def start_trading(setups_df, timezone='Asia/Kolkata', fixed_qty=1, product_type=
     polling_thread.start()
     
     # Wait for session start if early
-    current_dt = datetime.datetime.now(IST)
-    session_start_dt = current_dt.replace(hour=9, minute=15, second=0, microsecond=0)
+    current_dt = datetime.datetime.now(timezone)
+    session_start_dt = current_dt.replace(hour=market_open_hour, minute=market_open_minute, second=0, microsecond=0)
     if current_dt < session_start_dt:
         wait_sec = (session_start_dt - current_dt).total_seconds()
         log_event({
@@ -482,8 +310,8 @@ def start_trading(setups_df, timezone='Asia/Kolkata', fixed_qty=1, product_type=
     # Keep running until session end
     try:
         while True:
-            current_dt = datetime.datetime.now(IST)
-            session_end_dt = current_dt.replace(hour=15, minute=30, second=0, microsecond=0)
+            current_dt = datetime.datetime.now(timezone)
+            session_end_dt = current_dt.replace(hour=market_close_hour, minute=market_close_minute, second=0, microsecond=0)
             if current_dt >= session_end_dt:
                 log_event({
                     'timestamp': current_dt.isoformat(),
