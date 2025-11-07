@@ -6,12 +6,12 @@ import os
 import datetime
 
 def generate_signals(
-    df: pd.DataFrame, 
-    symbol: str = '', 
+    df: pd.DataFrame,
+    tick: float,
+    symbol: str = '',
     setup_days: list = None,
     take_profit_mult: float = 3.0,
     initial_sl_mult: float = 0.5,
-    tick: float = 0.05,
     use_take_profit: bool = True,
     trigger_tick_mult: int = 10,
     trigger_window_minutes: int = 60,
@@ -31,11 +31,11 @@ def generate_signals(
     
     Args:
         df: 15-minute intraday DataFrame with OHLC data
+        tick: Tick size for price rounding (must be provided by caller)
         symbol: Trading symbol (default: '')
         setup_days: List of setup day dicts with setup_date, entry_price, trigger_price, true_range (default: None)
         take_profit_mult: Take profit multiplier of risk (default: 3.0)
         initial_sl_mult: Initial stop loss multiplier of true range (default: 0.5)
-        tick: Tick size for price rounding (default: 0.05)
         use_take_profit: Whether to use take profit exits (default: True)
         trigger_tick_mult: Multiplier for trigger threshold calculation (default: 10)
         trigger_window_minutes: Time window in minutes to monitor for trigger (default: 60)
@@ -215,8 +215,14 @@ def generate_signals(
                         long_entry_price = fill_price
                         # New SL calculation: entry_price - (initial_sl_mult * true_range)
                         stop_loss = long_entry_price - (initial_sl_mult * entry_tr)
+                        # Round SL to 2 decimals as per backtest requirement
+                        stop_loss = round(stop_loss, 2)
+                        # Recompute risk using rounded SL and round to 2 decimals
                         risk = long_entry_price - stop_loss
+                        risk = round(risk, 2)
+                        # Calculate TP from rounded risk and round to 2 decimals
                         take_profit = long_entry_price + take_profit_mult * risk
+                        take_profit = round(take_profit, 2)
                         entries_today += 1  # Increment entry counter
 
                         if log:
@@ -253,6 +259,7 @@ def generate_signals(
                 order_size.iloc[i] = -np.inf
                 order_price.iloc[i] = exit_price
                 in_long = False
+                trigger_time = None  # Reset trigger so re-entry requires trigger hit again
 
                 if log:
                     can_retry = (max_attempts is None) or (entries_today < max_attempts)
@@ -276,6 +283,7 @@ def generate_signals(
                 order_size.iloc[i] = -np.inf
                 order_price.iloc[i] = exit_price
                 in_long = False
+                trigger_time = None  # Reset trigger so re-entry requires trigger hit again
 
                 if log:
                     can_retry = (max_attempts is None) or (entries_today < max_attempts)
@@ -292,6 +300,8 @@ def generate_signals(
             # Update trailing stop loss if the current bar is green (close >= open)
             if df['open'].iloc[i] <= df['close'].iloc[i]:
                 new_sl = df['low'].iloc[i] - 1e-8
+                # Round new trailing SL to 2 decimals before comparison and assignment
+                new_sl = round(new_sl, 2)
                 if new_sl > stop_loss:
                     old_sl = stop_loss
                     stop_loss = new_sl

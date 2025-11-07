@@ -27,7 +27,7 @@ def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interv
         max_attempts: Maximum number of attempts per day (default: None for unlimited)
     
     Returns:
-        DataFrame with backtest results
+        Tuple of (DataFrame with backtest results, backtest_run_id)
     """
     if not symbols:
         raise ValueError("symbols parameter is required")
@@ -121,9 +121,21 @@ def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interv
     all_trade_logs = []  # Collect all trade logs for database storage
     
     for symbol, df in data_cache.items():
-        # Fetch tick size dynamically
-        instrument_info = fetch_instrument_info(symbol, exchange=EXCHANGE)
-        tick_size = instrument_info.get('tick_size', 0.05)
+        # Fetch tick size dynamically (no default; skip if unavailable)
+        tick_size = None
+        setup_df_sym = setup_days_detailed.get(symbol, pd.DataFrame())
+        if setup_df_sym is not None and not setup_df_sym.empty and 'tick_size' in setup_df_sym.columns:
+            ts_series = setup_df_sym['tick_size'].dropna()
+            if not ts_series.empty:
+                mode_series = ts_series.mode()
+                tick_size = float(mode_series.iloc[0]) if not mode_series.empty else float(ts_series.iloc[0])
+
+        if tick_size is None:
+            instrument_info = fetch_instrument_info(symbol, exchange=EXCHANGE)
+            tick_size = instrument_info.get('tick_size')
+        if tick_size is None:
+            print(f"  -> Warning: Missing tick_size for {symbol}. Defaulting to 0.05.")
+            tick_size = 0.05
 
         price = df['close']
 
@@ -300,14 +312,18 @@ def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interv
             'exit_counts', 'total_reentries'
         ]
         print("Pool Aggregates:")
-        agg_stats = {
-            'mean_sharpe': results_df['Sharpe Ratio'].mean(),
-            'total_trades_all': results_df['Total Trades'].sum(),
-            'mean_win_rate': results_df['Win Rate [%]'].mean(),
-        }
-        print(agg_stats)
+        mean_sharpe = results_df['Sharpe Ratio'].mean() if 'Sharpe Ratio' in results_df.columns else np.nan
+        total_trades_all = results_df['Total Trades'].sum() if 'Total Trades' in results_df.columns else 0
+        mean_win_rate = results_df['Win Rate [%]'].mean() if 'Win Rate [%]' in results_df.columns else np.nan
+        mean_sortino = results_df['Sortino Ratio'].mean() if 'Sortino Ratio' in results_df.columns else np.nan
 
-    return results_df if results_df is not None else pd.DataFrame()
+        # Nicely formatted output
+        print(f"- Mean Sharpe: {mean_sharpe:.2f}" if not np.isnan(mean_sharpe) else "- Mean Sharpe: n/a")
+        print(f"- Mean Sortino: {mean_sortino:.2f}" if not np.isnan(mean_sortino) else "- Mean Sortino: n/a")
+        print(f"- Total Trades: {int(total_trades_all)}")
+        print(f"- Mean Win Rate: {mean_win_rate:.2f}%" if not np.isnan(mean_win_rate) else "- Mean Win Rate: n/a")
+
+    return results_df if results_df is not None else pd.DataFrame(), backtest_run_id
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Backtest strat80_20 strategy.")

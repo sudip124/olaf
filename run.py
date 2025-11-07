@@ -2,7 +2,9 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+from strategies.strat80_20.backtest_analysis import build_backtest_journal, calculate_symbol_kpis
 
 # Make sure project root is on sys.path when running from subfolders
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -47,7 +49,7 @@ def do_backtest(cfg: Dict[str, Any]) -> None:
     print(f"[Backtest] from_date={from_date} to_date={to_date} scan_interval={scan_interval} backtest_interval={backtest_interval}")
     print(f"[Backtest] max_attempts={max_attempts}")
     
-    run_backtest(
+    results_df, backtest_run_id = run_backtest(
         symbols=symbols, 
         from_date=from_date,
         to_date=to_date,
@@ -56,6 +58,21 @@ def do_backtest(cfg: Dict[str, Any]) -> None:
         optimize=optimize,
         max_attempts=max_attempts
     )
+    
+    # Build journal and calculate KPIs
+    if backtest_run_id is not None:
+        try:
+            inserted = build_backtest_journal(backtest_run_id, strategy_name='strat80_20')
+            print(f"[Backtest] Built backtest_journal with {inserted} row(s)")
+        except Exception as e:
+            print(f"[Backtest] Warning: failed to build backtest_journal: {e}")
+            backtest_run_id = None  # Don't proceed to KPI calculation if journal failed
+        
+        # KPI analysis is now executed and saved inside build_backtest_journal
+        if backtest_run_id is not None:
+            print(f"[KPI Analysis] KPI computation delegated to journal builder for backtest_id {backtest_run_id}.")
+    else:
+        print(f"[Backtest] Warning: backtest_run_id is None, skipping journal and KPI analysis")
 
 
 def do_live(cfg: Dict[str, Any]) -> None:

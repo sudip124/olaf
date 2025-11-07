@@ -19,90 +19,30 @@ close_pos_threshold = params.get('close_pos_threshold', 0.2)
 trigger_tick_mult = params.get('trigger_tick_mult', 10)
 
 
-def detect_setup(symbol, interval, from_date, to_date, volume_threshold, open_pos_threshold, close_pos_threshold, trigger_tick_mult):
-    """
-    Fetch daily data and check if the latest day is a setup.
-    Returns dict with setup details (JSON-ready) or None if no setup/no data.
-    Includes: symbol, date, entry_price (prev day low), trigger_price, tick_size, true_range, volume.
-    """
-    try:
-        df = fetch_historical_data(symbol, interval, from_date, to_date)
-        if df.empty or len(df) < 2:
-            return None
-        
-        # Ensure daily aggregation (robustness for any input interval)
-        if interval != 'D':
-            df = df.resample('D').agg({
-                'open': 'first',
-                'high': 'max',
-                'low': 'min',
-                'close': 'last',
-                'volume': 'sum'
-            }).dropna()
-        
-        # Compute true range and positions (core 80-20 logic)
-        df['prev_close'] = df['close'].shift(1)
-        df['true_high'] = np.maximum(df['high'], df['prev_close'].fillna(df['open']))
-        df['true_low'] = np.minimum(df['low'], df['prev_close'].fillna(df['open']))
-        df['tr'] = df['true_high'] - df['true_low']
-        df['open_pos'] = (df['open'] - df['true_low']) / df['tr'].replace(0, np.nan)
-        df['close_pos'] = (df['close'] - df['true_low']) / df['tr'].replace(0, np.nan)
-        
-        # Latest (setup) day
-        latest = df.iloc[-1]
-        if latest['volume'] < volume_threshold:
-            return None  # Skip illiquid symbols
-        
-        is_setup = (latest['open_pos'] >= open_pos_threshold) and (latest['close_pos'] <= close_pos_threshold)
-        if not is_setup:
-            return None
-        
-        # Setup confirmed: Compute trading params for next day
-        entry_price = latest['low']
-        true_range = latest['tr']
-        
-        # Fetch dynamic tick_size
-        try:
-            instrument_info = fetch_instrument_info(symbol, exchange=EXCHANGE)
-            tick_size = instrument_info.get('tick_size', 0.05)
-        except Exception as info_err:
-            print(f"Warning: Could not fetch tick_size for {symbol}, defaulting to 0.05 ({info_err})")
-            tick_size = 0.05
-        
-        trigger_price = entry_price - trigger_tick_mult * tick_size
-        
-        return {
-            'symbol': symbol,
-            'date': df.index[-1].date().isoformat(),
-            'entry_price': round(entry_price, 2),
-            'trigger_price': round(trigger_price, 2),
-            'tick_size': tick_size,
-            'true_range': round(true_range, 2),
-            'volume': int(latest['volume']),  # Retained for liquidity reference
-            'open_pos': round(latest['open_pos'], 4),
-            'close_pos': round(latest['close_pos'], 4)
-        }
-    except Exception as e:
-        print(f"Error processing {symbol}: {e}")
-        return None
-
-
-def get_setup_days(symbol: str, from_date: str, to_date: str, interval: str = 'D', volume_threshold: int = 100000,
-                    open_pos_threshold: float = open_pos_threshold, close_pos_threshold: float = close_pos_threshold,
-                    return_details: bool = False):
-    """
-    Compute all historical 80-20 setup days for a symbol within [from_date, to_date].
-    - If return_details is False (default): returns a list[date] of setup days (backward compatible).
-    - If return_details is True: returns a pandas.DataFrame with one row per setup day and columns:
-      ['symbol','setup_date','entry_date','entry_price','trigger_price','tick_size','true_range','volume','open_pos','close_pos']
-    """
+def find_setups(
+    symbol: str,
+    from_date: str,
+    to_date: str,
+    *,
+    interval: str = 'D',
+    volume_threshold: int = 100000,
+    open_pos_threshold: float = open_pos_threshold,
+    close_pos_threshold: float = close_pos_threshold,
+    trigger_tick_mult: int = trigger_tick_mult,
+    latest_only: bool = False,
+    return_details: bool = False,
+    require_tick_size: bool = True,
+):
     df = fetch_historical_data(symbol, interval, from_date, to_date)
     if df is None or df.empty or len(df) < 2:
-        return [] if not return_details else pd.DataFrame(columns=[
-            'symbol','setup_date','entry_date','entry_price','trigger_price','tick_size','true_range','volume','open_pos','close_pos'
-        ])
+        if latest_only:
+            return None
+        if return_details:
+            return pd.DataFrame(columns=[
+                'symbol','setup_date','entry_date','entry_price','trigger_price','tick_size','true_range','volume','open_pos','close_pos'
+            ])
+        return []
 
-    # Always resample to daily to ensure unique dates (handles duplicate DB rows)
     df = df.resample('D').agg({
         'open': 'first',
         'high': 'max',
@@ -121,16 +61,45 @@ def get_setup_days(symbol: str, from_date: str, to_date: str, interval: str = 'D
     liquid = df['volume'] >= volume_threshold
     setup_mask = (df['open_pos'] >= open_pos_threshold) & (df['close_pos'] <= close_pos_threshold) & liquid
 
-    if not return_details:
-        return [ts.date() for ts in df.index[setup_mask]]
-
-    # Detailed rows similar to detect_setup, but for all setup days
     try:
         instrument_info = fetch_instrument_info(symbol, exchange=EXCHANGE)
-        tick_size = instrument_info.get('tick_size', 0.05)
-    except Exception as info_err:
-        print(f"Warning: Could not fetch tick_size for {symbol}, defaulting to 0.05 ({info_err})")
+        tick_size = instrument_info.get('tick_size') if instrument_info is not None else None
+        if tick_size is None:
+            if require_tick_size:
+                return None if latest_only else ([] if not return_details else pd.DataFrame(columns=[
+                    'symbol','setup_date','entry_date','entry_price','trigger_price','tick_size','true_range','volume','open_pos','close_pos'
+                ]))
+            tick_size = 0.05
+    except Exception:
+        if require_tick_size:
+            return None if latest_only else ([] if not return_details else pd.DataFrame(columns=[
+                'symbol','setup_date','entry_date','entry_price','trigger_price','tick_size','true_range','volume','open_pos','close_pos'
+            ]))
         tick_size = 0.05
+
+    if latest_only:
+        if len(df) == 0:
+            return None
+        latest = df.iloc[-1]
+        if not setup_mask.iloc[-1]:
+            return None
+        entry_price = float(latest['low'])
+        trigger_price = entry_price - trigger_tick_mult * tick_size
+        true_range = float(latest['tr'])
+        return {
+            'symbol': symbol,
+            'date': df.index[-1].date().isoformat(),
+            'entry_price': round(entry_price, 2),
+            'trigger_price': round(trigger_price, 2),
+            'tick_size': tick_size,
+            'true_range': round(true_range, 2),
+            'volume': int(latest['volume']) if not pd.isna(latest['volume']) else None,
+            'open_pos': round(float(latest['open_pos']), 4) if not pd.isna(latest['open_pos']) else None,
+            'close_pos': round(float(latest['close_pos']), 4) if not pd.isna(latest['close_pos']) else None,
+        }
+
+    if not return_details:
+        return [ts.date() for ts in df.index[setup_mask]]
 
     records = []
     for ts, row in df.loc[setup_mask].iterrows():
@@ -148,8 +117,52 @@ def get_setup_days(symbol: str, from_date: str, to_date: str, interval: str = 'D
             'open_pos': round(float(row['open_pos']), 4) if not pd.isna(row['open_pos']) else None,
             'close_pos': round(float(row['close_pos']), 4) if not pd.isna(row['close_pos']) else None,
         })
-
     return pd.DataFrame.from_records(records)
+
+
+def detect_setup(symbol, interval, from_date, to_date, volume_threshold, open_pos_threshold, close_pos_threshold, trigger_tick_mult):
+    """
+    Fetch daily data and check if the latest day is a setup.
+    Returns dict with setup details (JSON-ready) or None if no setup/no data.
+    Includes: symbol, date, entry_price (prev day low), trigger_price, tick_size, true_range, volume.
+    """
+    return find_setups(
+        symbol,
+        from_date,
+        to_date,
+        interval=interval,
+        volume_threshold=volume_threshold,
+        open_pos_threshold=open_pos_threshold,
+        close_pos_threshold=close_pos_threshold,
+        trigger_tick_mult=trigger_tick_mult,
+        latest_only=True,
+        return_details=False,
+        require_tick_size=True,
+    )
+
+
+def get_setup_days(symbol: str, from_date: str, to_date: str, interval: str = 'D', volume_threshold: int = 100000,
+                    open_pos_threshold: float = open_pos_threshold, close_pos_threshold: float = close_pos_threshold,
+                    return_details: bool = False):
+    """
+    Compute all historical 80-20 setup days for a symbol within [from_date, to_date].
+    - If return_details is False (default): returns a list[date] of setup days (backward compatible).
+    - If return_details is True: returns a pandas.DataFrame with one row per setup day and columns:
+      ['symbol','setup_date','entry_date','entry_price','trigger_price','tick_size','true_range','volume','open_pos','close_pos']
+    """
+    return find_setups(
+        symbol,
+        from_date,
+        to_date,
+        interval=interval,
+        volume_threshold=volume_threshold,
+        open_pos_threshold=open_pos_threshold,
+        close_pos_threshold=close_pos_threshold,
+        trigger_tick_mult=trigger_tick_mult,
+        latest_only=False,
+        return_details=return_details,
+        require_tick_size=False,
+    )
 
 
 def run_scanner(symbols, interval, from_date, to_date, max_workers=10, volume_threshold=100000, sort_by_volume=True):  # Thread count tuned for API rate limits

@@ -97,6 +97,39 @@ class TradeLog(Base):
         return f"<TradeLog(event={self.event}, symbol={self.symbol}, timestamp={self.timestamp})>"
 
 
+class KPIScore(Base):
+    """Table to store KPI scores and composite scores for symbols per backtest run."""
+    __tablename__ = 'kpi_scores'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    backtest_id = Column(Integer, ForeignKey('backtest_runs.id'), nullable=False)
+    symbol = Column(String(50), nullable=False)
+    
+    # Composite score
+    composite_score = Column(Float)
+    
+    # KPI metrics
+    total_setups = Column(Integer)
+    total_trades = Column(Integer)
+    success_rate = Column(Float)
+    miss_rate = Column(Float)
+    win_rate = Column(Float)
+    win_loss_ratio = Column(Float)
+    reentries = Column(Integer)
+    sharpe_ratio = Column(Float)
+    sortino_ratio = Column(Float)
+    max_dd_r = Column(Float)
+    median_win_r = Column(Float)
+    median_loss_r = Column(Float)
+    avg_risk = Column(Float)
+    top_weekday = Column(String(50))
+    win_rate_last_30d = Column(Float)
+    trades_last_30d = Column(Integer)
+    
+    def __repr__(self):
+        return f"<KPIScore(backtest_id={self.backtest_id}, symbol={self.symbol}, score={self.composite_score})>"
+
+
 class LiveRun(Base):
     """Table to store live trading session metadata."""
     __tablename__ = 'live_runs'
@@ -331,10 +364,22 @@ def save_trade_logs(backtest_run_id, trade_logs, strategy_name='strat80_20'):
                     stop_loss = float(sl_part)
                 except:
                     pass
+            elif 'SL at' in details:
+                try:
+                    sl_part = details.split('SL at')[1].split()[0].strip()
+                    stop_loss = float(sl_part)
+                except:
+                    pass
             
             if 'TP:' in details:
                 try:
                     tp_part = details.split('TP:')[1].split('(')[0].strip()
+                    take_profit = float(tp_part)
+                except:
+                    pass
+            elif 'TP at' in details:
+                try:
+                    tp_part = details.split('TP at')[1].split()[0].strip()
                     take_profit = float(tp_part)
                 except:
                     pass
@@ -355,6 +400,42 @@ def save_trade_logs(backtest_run_id, trade_logs, strategy_name='strat80_20'):
             else:
                 # Assume it's a datetime.time object
                 time_str = time_val.isoformat()
+
+            # Additional inference: for trailing SL updates, use price as stop_loss when not parsed
+            event_name = log_entry.get('event', '')
+            if event_name == 'Trailing SL Update' and stop_loss is None:
+                try:
+                    price_val = log_entry.get('price')
+                    if price_val is not None:
+                        stop_loss = float(price_val)
+                except:
+                    pass
+
+            # Infer initial SL from risk and entry price for 'Entry Filled' when SL not parsed
+            if event_name == 'Entry Filled' and stop_loss is None:
+                try:
+                    price_val = log_entry.get('price')
+                    if price_val is not None and risk is not None:
+                        stop_loss = float(price_val) - float(risk)
+                except:
+                    pass
+
+            # Round parsed numeric values to 2 decimals for consistency
+            if stop_loss is not None:
+                try:
+                    stop_loss = round(float(stop_loss), 2)
+                except:
+                    pass
+            if take_profit is not None:
+                try:
+                    take_profit = round(float(take_profit), 2)
+                except:
+                    pass
+            if risk is not None:
+                try:
+                    risk = round(float(risk), 2)
+                except:
+                    pass
             
             trade_log = TradeLog(
                 backtest_run_id=backtest_run_id,
@@ -370,6 +451,7 @@ def save_trade_logs(backtest_run_id, trade_logs, strategy_name='strat80_20'):
                 take_profit=take_profit,
                 risk=risk
             )
+            
             session.add(trade_log)
             count += 1
         
