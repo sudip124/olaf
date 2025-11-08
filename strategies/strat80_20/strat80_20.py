@@ -1,4 +1,3 @@
-# Modified strat80_20.py
 import pandas as pd
 import numpy as np
 import talib

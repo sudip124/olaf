@@ -4,7 +4,6 @@ import os
 import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from analysis.backtest_journal_base import BacktestJournalBuilder
 
 # Make sure project root is on sys.path when running from subfolders
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -19,7 +18,7 @@ def load_config(path: str) -> Dict[str, Any]:
 
 def do_backtest(cfg: Dict[str, Any]) -> None:
     # Lazy import to ensure DB_PATH from config/env is set before modules load
-    from strategies.strat80_20.backtest import run_backtest
+    from strategies.strat80_20.backtest_8020 import run_backtest
 
     # Extract backtest config
     backtest_cfg = cfg.get("backtest", {})
@@ -49,7 +48,7 @@ def do_backtest(cfg: Dict[str, Any]) -> None:
     print(f"[Backtest] from_date={from_date} to_date={to_date} scan_interval={scan_interval} backtest_interval={backtest_interval}")
     print(f"[Backtest] max_attempts={max_attempts}")
     
-    results_df, backtest_run_id = run_backtest(
+    journal_df, backtest_run_id = run_backtest(
         symbols=symbols, 
         from_date=from_date,
         to_date=to_date,
@@ -59,38 +58,25 @@ def do_backtest(cfg: Dict[str, Any]) -> None:
         max_attempts=max_attempts
     )
     
-    # Build journal and analyze using generic AnalysisService
+    # Analyze using generic AnalysisService with returned journal_df
     if backtest_run_id is not None:
         try:
-            # Create journal builder instance
-            from strategies.strat80_20.journal_builder_8020 import JournalBuilder8020
-            journal_builder: BacktestJournalBuilder = JournalBuilder8020(strategy_name='strat80_20')
-            
-            # Build journal DataFrame (includes setup metrics)
-            journal_df = journal_builder.build(backtest_run_id)
-            print(f"[Backtest] Built journal DataFrame with {len(journal_df)} row(s)")
-            
             if not journal_df.empty:
-                # Use generic AnalysisService to store and analyze
                 from analysis.analysis_service import AnalysisService
-                
-                # Create analysis service and process
                 analysis = AnalysisService(strategy_name='strat80_20')
                 kpi_df = analysis.analyze_and_store(
                     journal_df=journal_df,
                     backtest_run_id=backtest_run_id
                 )
-                
                 print(f"[Analysis] Completed analysis and storage for backtest #{backtest_run_id}")
             else:
                 print(f"[Backtest] Warning: journal DataFrame is empty, skipping analysis")
-                
         except Exception as e:
-            print(f"[Backtest] Warning: failed to build journal or analyze: {e}")
+            print(f"[Backtest] Warning: failed to analyze: {e}")
             import traceback
             traceback.print_exc()
     else:
-        print(f"[Backtest] Warning: backtest_run_id is None, skipping journal and analysis")
+        print(f"[Backtest] Warning: backtest_run_id is None, skipping analysis")
 
 
 def do_live(cfg: Dict[str, Any]) -> None:
@@ -102,7 +88,7 @@ def do_live(cfg: Dict[str, Any]) -> None:
 
     if strategy == "strat80_20":
         # Lazy imports
-        from strategies.strat80_20.live import start_trading
+        from strategies.strat80_20.live_8020 import start_trading
         from strategies.strat80_20.scanner_long import get_setup_days
         from data_manager.config import ensure_directories
         import json
