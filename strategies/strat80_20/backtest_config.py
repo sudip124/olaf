@@ -10,3 +10,6 @@ SLIPAGE = 0.0005  # 0.05% slippage
 # Trading Session Times (NSE)
 SESSION_START = "09:15:00"
 SESSION_END = "15:30:00"
+
+# Risk Management
+INITIAL_SL_TICKS = 20  # Initial stop loss in ticks below entry price

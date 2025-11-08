@@ -91,7 +91,7 @@ def on_order_update_received(update):
         symbol_states[symbol].on_order_update(update)
 
 def load_setups(setups_df, market_open_hour, market_open_minute, market_close_hour, market_close_minute,
-                fixed_qty, product_type, take_profit_mult, initial_sl_mult, 
+                fixed_qty, product_type, take_profit_mult, initial_sl_ticks, 
                 use_take_profit, trigger_window_minutes, max_attempts, max_order_retries):
     """Load setups from DataFrame and create SymbolState instances."""
     instruments = []
@@ -110,7 +110,7 @@ def load_setups(setups_df, market_open_hour, market_open_minute, market_close_ho
             fixed_qty=fixed_qty,
             product_type=product_type,
             take_profit_mult=take_profit_mult,
-            initial_sl_mult=initial_sl_mult,
+            initial_sl_ticks=initial_sl_ticks,
             use_take_profit=use_take_profit,
             trigger_window_minutes=trigger_window_minutes,
             max_attempts=max_attempts,
@@ -197,7 +197,7 @@ def start_trading(setups_df, timezone_str='Asia/Kolkata', market_open_hour=9,
                  market_open_minute=15, market_close_hour=15, market_close_minute=30,
                  fixed_qty=1, product_type='MIS', order_validity='DAY', 
                  max_attempts=None, max_order_retries=3,
-                 take_profit_mult_param=3.0, initial_sl_mult_param=0.5, 
+                 take_profit_mult_param=3.0, initial_sl_ticks_param=20, 
                  use_take_profit_param=False, trigger_window_minutes_param=60,
                  ws_url=None):
     """Start live trading with given setups and parameters.
@@ -215,7 +215,7 @@ def start_trading(setups_df, timezone_str='Asia/Kolkata', market_open_hour=9,
         max_attempts: Maximum number of entry attempts per symbol per day (default: None for no limit)
         max_order_retries: Maximum retry attempts for failed orders (default: 3, None for unlimited)
         take_profit_mult_param: Take profit multiplier (default: 3.0)
-        initial_sl_mult_param: Initial stop loss multiplier of true range (default: 0.5)
+        initial_sl_ticks_param: Initial stop loss in ticks below entry price (default: 20)
         use_take_profit_param: Whether to use take profit (default: False)
         trigger_window_minutes_param: Trigger window in minutes (default: 60)
         ws_url: WebSocket URL (default: from live_config.WS_URL)
@@ -246,7 +246,7 @@ def start_trading(setups_df, timezone_str='Asia/Kolkata', market_open_hour=9,
     
     # Create live run entry in database
     try:
-        from .db_models import save_live_run
+        from .strategy_db_models import save_live_run
         live_run_id = save_live_run(
             symbols=setups_df['symbol'].tolist(),
             timezone=timezone_str,
@@ -272,7 +272,7 @@ def start_trading(setups_df, timezone_str='Asia/Kolkata', market_open_hour=9,
         fixed_qty=fixed_qty,
         product_type=product_type,
         take_profit_mult=take_profit_mult_param,
-        initial_sl_mult=initial_sl_mult_param,
+        initial_sl_ticks=initial_sl_ticks_param,
         use_take_profit=use_take_profit_param,
         trigger_window_minutes=trigger_window_minutes_param,
         max_attempts=max_attempts,

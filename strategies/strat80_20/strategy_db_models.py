@@ -1,4 +1,15 @@
-"""Database models for storing backtest runs and setup days."""
+"""
+Strategy-specific database models for strat80_20.
+
+This module contains models specific to the strat80_20 strategy:
+- BacktestRun: Metadata for backtest runs
+- SetupDay: Setup detection results
+- TradeLog: Trade events and signals
+- LiveRun: Live trading session metadata
+- LiveTradeLog: Live trading events
+
+Note: Generic analysis models (BacktestJournal, KPIScore) are now in analysis/db_models.py
+"""
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Date, ForeignKey, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -95,39 +106,6 @@ class TradeLog(Base):
     
     def __repr__(self):
         return f"<TradeLog(event={self.event}, symbol={self.symbol}, timestamp={self.timestamp})>"
-
-
-class KPIScore(Base):
-    """Table to store KPI scores and composite scores for symbols per backtest run."""
-    __tablename__ = 'kpi_scores'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    backtest_id = Column(Integer, ForeignKey('backtest_runs.id'), nullable=False)
-    symbol = Column(String(50), nullable=False)
-    
-    # Composite score
-    composite_score = Column(Float)
-    
-    # KPI metrics
-    total_setups = Column(Integer)
-    total_trades = Column(Integer)
-    success_rate = Column(Float)
-    miss_rate = Column(Float)
-    win_rate = Column(Float)
-    win_loss_ratio = Column(Float)
-    reentries = Column(Integer)
-    sharpe_ratio = Column(Float)
-    sortino_ratio = Column(Float)
-    max_dd_r = Column(Float)
-    median_win_r = Column(Float)
-    median_loss_r = Column(Float)
-    avg_risk = Column(Float)
-    top_weekday = Column(String(50))
-    win_rate_last_30d = Column(Float)
-    trades_last_30d = Column(Integer)
-    
-    def __repr__(self):
-        return f"<KPIScore(backtest_id={self.backtest_id}, symbol={self.symbol}, score={self.composite_score})>"
 
 
 class LiveRun(Base):
@@ -463,104 +441,6 @@ def save_trade_logs(backtest_run_id, trade_logs, strategy_name='strat80_20'):
         session.rollback()
         print(f"Error saving trade logs to database: {e}")
         raise
-    finally:
-        session.close()
-
-
-def analyze_logs_from_db(backtest_run_id, strategy_name='strat80_20'):
-    """Analyze trade logs from database to extract custom KPIs.
-    
-    Args:
-        backtest_run_id: ID of the backtest run to analyze
-        strategy_name: Name of the strategy (default: 'strat80_20')
-    
-    Returns:
-        Dictionary with aggregated metrics
-    """
-    import pandas as pd
-    from sqlalchemy import func
-    
-    engine = get_db_engine(strategy_name)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    
-    try:
-        # Query all trade logs for this backtest run
-        logs = session.query(TradeLog).filter_by(backtest_run_id=backtest_run_id).all()
-        
-        if not logs:
-            return {}
-        
-        # Convert to DataFrame for easier analysis
-        log_data = [{
-            'timestamp': log.timestamp,
-            'date': log.date,
-            'time': log.time,
-            'weekday': log.weekday,
-            'event': log.event,
-            'symbol': log.symbol,
-            'price': log.price,
-            'details': log.details
-        } for log in logs]
-        
-        log_df = pd.DataFrame(log_data)
-        
-        # Daily setup count (signal generation)
-        setups = log_df[log_df['event'] == 'Setup Detected']
-        daily_setups = setups.groupby('date').size().to_dict()
-        total_setups = len(setups)
-        
-        # Daily success count (entries following setups)
-        entries = log_df[log_df['event'] == 'Entry Filled']
-        # Setups are on prev_day for entry next day, so shift setup date +1
-        setups_copy = setups.copy()
-        setups_copy['entry_date'] = pd.to_datetime(setups_copy['date']) + pd.Timedelta(days=1)
-        setups_copy['entry_date'] = setups_copy['entry_date'].dt.date
-        successful_setups = setups_copy[setups_copy['entry_date'].isin(entries['date'])]
-        daily_success = successful_setups.groupby('entry_date').size().to_dict()
-        total_success = len(successful_setups)
-        
-        # Daily missed signals (setups without entry)
-        missed_setups = setups_copy[~setups_copy['entry_date'].isin(entries['date'])]
-        daily_missed = missed_setups.groupby('entry_date').size().to_dict()
-        total_missed = len(missed_setups)
-        
-        # Trade exit trigger counts
-        exits_sl = log_df[log_df['event'] == 'Stop Loss Exit']
-        exits_tp = log_df[log_df['event'] == 'Take Profit Exit']
-        exits_tsl = log_df[log_df['event'].str.contains('Trailing SL', na=False)]
-        exit_counts = {
-            'stop_loss': len(exits_sl),
-            'take_profit': len(exits_tp),
-            'trailing_sl_updates': len(exits_tsl),
-        }
-        
-        # Count of trade re-entries for the same setup day (multiple entries per day)
-        daily_entries = entries.groupby('date').size()
-        reentry_days = daily_entries[daily_entries > 1]
-        total_reentries = (daily_entries - 1).clip(lower=0).sum()
-        
-        # Weekday analysis
-        setup_weekday_counts = setups.groupby('weekday').size().to_dict()
-        entry_weekday_counts = entries.groupby('weekday').size().to_dict()
-        
-        return {
-            'total_setups': total_setups,
-            'daily_setups': daily_setups,
-            'total_success': total_success,
-            'daily_success': daily_success,
-            'total_missed': total_missed,
-            'daily_missed': daily_missed,
-            'exit_counts': exit_counts,
-            'total_reentries': int(total_reentries),
-            'reentry_days': reentry_days.to_dict(),
-            'setup_weekday_counts': setup_weekday_counts,
-            'entry_weekday_counts': entry_weekday_counts
-        }
-        
-    except Exception as e:
-        print(f"Error analyzing logs from database: {e}")
-        return {}
     finally:
         session.close()
 

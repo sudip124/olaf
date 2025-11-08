@@ -9,9 +9,9 @@ from strategies.strat80_20.backtest_config import INIT_CASH, FEES, EXCHANGE, SES
 from data_manager.data_fetcher import fetch_historical_data, fetch_instrument_info
 from strategies.strat80_20.scanner_long import get_setup_days
 from strategies.strat80_20.strat80_20 import generate_signals
-from strategies.strat80_20.db_models import save_backtest_data, save_trade_logs, analyze_logs_from_db
+from strategies.strat80_20.strategy_db_models import save_backtest_data, save_trade_logs
 
-# analyze_logs function removed - now using analyze_logs_from_db from db_models
+# Note: Generic analysis now handled by analysis/analysis_service.py
 
 def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interval='15m', optimize=False, max_attempts=None):
     """
@@ -155,7 +155,7 @@ def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interv
                     symbol=symbol,
                     setup_days=setup_days_map.get(symbol, []),
                     take_profit_mult=merged_params.get('take_profit_mult'),
-                    initial_sl_mult=merged_params.get('initial_sl_mult', 0.5),
+                    initial_sl_ticks=merged_params.get('initial_sl_ticks', 20),
                     tick=tick_size,
                     use_take_profit=merged_params.get('use_take_profit'),
                     trigger_tick_mult=merged_params.get('trigger_tick_mult'),
@@ -195,7 +195,7 @@ def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interv
                 symbol=symbol,
                 setup_days=setup_days_map.get(symbol, []),
                 take_profit_mult=final_params.get('take_profit_mult'),
-                initial_sl_mult=final_params.get('initial_sl_mult', 0.5),
+                initial_sl_ticks=final_params.get('initial_sl_ticks', 20),
                 tick=tick_size,
                 use_take_profit=final_params.get('use_take_profit'),
                 trigger_tick_mult=final_params.get('trigger_tick_mult'),
@@ -212,7 +212,7 @@ def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interv
                 symbol=symbol,
                 setup_days=setup_days_map.get(symbol, []),
                 take_profit_mult=defaults.get('take_profit_mult'),
-                initial_sl_mult=defaults.get('initial_sl_mult', 0.5),
+                initial_sl_ticks=defaults.get('initial_sl_ticks', 20),
                 tick=tick_size,
                 use_take_profit=defaults.get('use_take_profit'),
                 trigger_tick_mult=defaults.get('trigger_tick_mult'),
@@ -291,16 +291,8 @@ def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interv
         except Exception as log_error:
             print(f"[Database] Warning: Failed to save trade logs: {log_error}")
     
-    # Analyze logs from database and add to results
-    if backtest_run_id is not None:
-        try:
-            log_metrics = analyze_logs_from_db(backtest_run_id, strategy_name='strat80_20')
-            # Add log metrics to each symbol's results
-            for symbol in results:
-                results[symbol].update(log_metrics)
-        except Exception as analysis_error:
-            print(f"[Database] Warning: Failed to analyze logs: {analysis_error}")
-
+    # Note: Analysis is now handled by generic AnalysisService in run.py
+    
     # Build results dataframe
     if results:
         results_df = pd.DataFrame.from_dict(results, orient='index')
@@ -325,21 +317,3 @@ def run_backtest(symbols, from_date, to_date, scan_interval='D', backtest_interv
 
     return results_df if results_df is not None else pd.DataFrame(), backtest_run_id
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Backtest strat80_20 strategy.")
-    parser.add_argument('--symbols', nargs='+', required=True, help="List of symbols to backtest")
-    parser.add_argument('--from-date', type=str, required=True, help="Start date (YYYY-MM-DD)")
-    parser.add_argument('--to-date', type=str, required=True, help="End date (YYYY-MM-DD)")
-    parser.add_argument('--scan-interval', type=str, default='D', help="Interval for setup detection (default: D)")
-    parser.add_argument('--backtest-interval', type=str, default='15m', help="Interval for backtest (default: 15m)")
-    parser.add_argument('--optimize', action='store_true', default=False, help="Enable parameter optimization")
-    args = parser.parse_args()
-
-    run_backtest(
-        symbols=args.symbols,
-        from_date=args.from_date,
-        to_date=args.to_date,
-        scan_interval=args.scan_interval,
-        backtest_interval=args.backtest_interval,
-        optimize=args.optimize
-    )

@@ -211,8 +211,7 @@ def fetch_instrument_info(symbol, exchange='NSE'):
     Fetch instrument info (e.g., tick size) for a symbol from OpenAlgo.
     Returns a dict with instrument details.
     """
-    quote = client.quotes(symbol=symbol, exchange=exchange)
-    # Defensive: handle missing keys
+    quote = client.symbol(symbol=symbol, exchange=exchange)
     info = quote.get('data', {})
     return info
 

@@ -1,6 +1,6 @@
 {
     "take_profit_mult": 3.0,
-    "initial_sl_mult": 0.5,
+    "initial_sl_ticks": 20,
     "tick": 0.05,
     "use_take_profit": false,
     "trigger_tick_mult": 10,
@@ -11,6 +11,7 @@
     "opt_ranges": {
         "take_profit_mult": [1.0, 2.0, 4.5],
         "trigger_tick_mult": [5, 10, 15],
-        "trigger_window_minutes": [30, 60, 90]
+        "trigger_window_minutes": [30, 60, 90],
+        "initial_sl_ticks": [10, 20, 30]
     }
 }

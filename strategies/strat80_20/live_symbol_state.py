@@ -15,7 +15,7 @@ is_market_open = None
 class SymbolState:
     def __init__(self, symbol, entry_price, trigger_price, tick_size, true_range,
                  market_open_hour, market_open_minute, market_close_hour, market_close_minute,
-                 fixed_qty, product_type, take_profit_mult, initial_sl_mult, 
+                 fixed_qty, product_type, take_profit_mult, initial_sl_ticks, 
                  use_take_profit, trigger_window_minutes, max_attempts, max_order_retries):
         self.symbol = symbol
         self.entry_price = entry_price
@@ -31,7 +31,7 @@ class SymbolState:
         self.fixed_qty = fixed_qty
         self.product_type = product_type
         self.take_profit_mult = take_profit_mult
-        self.initial_sl_mult = initial_sl_mult
+        self.initial_sl_ticks = initial_sl_ticks
         self.use_take_profit = use_take_profit
         self.trigger_window_minutes = trigger_window_minutes
         self.max_attempts = max_attempts
@@ -84,11 +84,15 @@ class SymbolState:
                 else:
                     self.bar_df = pd.concat([self.bar_df, new_bar])
 
-                        # Update trailing SL if in position and green bar
+                # Update trailing SL if in position and green bar
                 if self.in_position and self.stop_loss is not None and bar_close >= bar_open:
                     new_sl = bar_low - 1e-8
+                    # Round new trailing SL to nearest tick before comparison and assignment
+                    new_sl = round(new_sl / self.tick_size) * self.tick_size
                     if new_sl > self.stop_loss:
-                        logger.info(f"[{self.symbol}] Trailing SL update: {self.stop_loss} -> {new_sl}")
+                        old_sl = self.stop_loss
+                        self.stop_loss = new_sl
+                        logger.info(f"[{self.symbol}] Trailing SL update: {old_sl} -> {new_sl}")
                         log_event({
                             'timestamp': self.current_bar_start.isoformat(),
                             'date': self.current_bar_start.date().isoformat(),
@@ -96,9 +100,8 @@ class SymbolState:
                             'event': 'Trailing SL Update',
                             'symbol': self.symbol,
                             'price': new_sl,
-                            'details': f"Updated SL from {self.stop_loss} to {new_sl} on green bar (bar_low: {bar_low})"
+                            'details': f"Updated SL from {old_sl} to {new_sl} on green bar (bar_low: {bar_low})"
                         })
-                        self.stop_loss = new_sl
 
             # Reset for new bar
             self.current_bar_ticks = []
@@ -159,7 +162,8 @@ class SymbolState:
             # Defensive check: ensure stop_loss is set
             if self.stop_loss is None:
                 logger.error(f"[{self.symbol}] In position but stop_loss is None! Setting emergency SL.")
-                self.stop_loss = self.long_entry_price - (self.initial_sl_mult * self.true_range) if self.long_entry_price else self.day_low - 1e-8
+                self.stop_loss = self.long_entry_price - (self.initial_sl_ticks * self.tick_size) if self.long_entry_price else self.day_low - 1e-8
+                self.stop_loss = round(self.stop_loss / self.tick_size) * self.tick_size
                 log_event({
                     'timestamp': ts.isoformat(),
                     'date': ts.date().isoformat(),
@@ -171,6 +175,7 @@ class SymbolState:
                 })
             
             if ltp <= self.stop_loss:
+                can_retry = (self.max_attempts is None) or (self.entries_today < self.max_attempts)
                 log_event({
                     'timestamp': ts.isoformat(),
                     'date': ts.date().isoformat(),
@@ -178,11 +183,12 @@ class SymbolState:
                     'event': 'Stop Loss Exit',
                     'symbol': self.symbol,
                     'price': ltp,
-                    'details': f"Hit SL at {self.stop_loss}"
+                    'details': f"Hit SL at {self.stop_loss}. Entries today: {self.entries_today}/{self.max_attempts if self.max_attempts else 'unlimited'}. Can retry: {can_retry}"
                 })
                 self.place_sell_market()
-                self.reset_after_exit()  # Reset states after exit to prevent re-triggers
+                self.reset_after_exit()  # Reset states after exit
             elif self.use_take_profit and self.take_profit is not None and ltp >= self.take_profit:
+                can_retry = (self.max_attempts is None) or (self.entries_today < self.max_attempts)
                 log_event({
                     'timestamp': ts.isoformat(),
                     'date': ts.date().isoformat(),
@@ -190,10 +196,10 @@ class SymbolState:
                     'event': 'Take Profit Exit',
                     'symbol': self.symbol,
                     'price': ltp,
-                    'details': f"Hit TP at {self.take_profit}"
+                    'details': f"Hit TP at {self.take_profit}. Entries today: {self.entries_today}/{self.max_attempts if self.max_attempts else 'unlimited'}. Can retry: {can_retry}"
                 })
                 self.place_sell_market()
-                self.reset_after_exit()  # Reset states after exit to prevent re-triggers
+                self.reset_after_exit()  # Reset states after exit
 
     def place_buy_stop(self, ts=None):
         """Place a buy stop order. Checks market hours before placing.
@@ -366,15 +372,21 @@ class SymbolState:
             fill_price = float(update['fill_price'])  # Ensure it's a float
             self.in_position = True
             self.long_entry_price = fill_price
-            # New SL calculation: entry_price - (initial_sl_mult * true_range)
-            self.stop_loss = fill_price - (self.initial_sl_mult * self.true_range)
+            # New SL calculation: entry_price - (initial_sl_ticks * tick_size)
+            self.stop_loss = fill_price - (self.initial_sl_ticks * self.tick_size)
+            # Round SL to nearest tick to prevent order rejections
+            self.stop_loss = round(self.stop_loss / self.tick_size) * self.tick_size
+            # Recompute risk using rounded SL
             risk = fill_price - self.stop_loss
+            # Calculate TP from risk and round to nearest tick
             self.take_profit = fill_price + self.take_profit_mult * risk if self.use_take_profit else None
+            if self.take_profit is not None:
+                self.take_profit = round(self.take_profit / self.tick_size) * self.tick_size
             # Count this entry
             self.entries_today += 1
             
             # Log with detailed info
-            logger.info(f"[{self.symbol}] Entry filled at {fill_price}, TR={self.true_range}, risk={risk}, SL={self.stop_loss}, TP={self.take_profit}")
+            logger.info(f"[{self.symbol}] Entry filled at {fill_price}, initial_sl_ticks={self.initial_sl_ticks}, risk={risk}, SL={self.stop_loss}, TP={self.take_profit}")
             now = datetime.datetime.now(timezone)
             log_event({
                 'timestamp': now.isoformat(),
@@ -383,7 +395,7 @@ class SymbolState:
                 'event': 'Entry Filled',
                 'symbol': self.symbol,
                 'price': fill_price,
-                'details': f"SL: {self.stop_loss} (entry - {self.initial_sl_mult}*TR), TP: {self.take_profit}, risk: {risk}, TR: {self.true_range}; entries_today={self.entries_today}/{self.max_attempts if self.max_attempts is not None else 'unlimited'}"
+                'details': f"Long entry #{self.entries_today}; SL: {self.stop_loss} (entry - {self.initial_sl_ticks} ticks); TP: {self.take_profit} (use_take_profit: {self.use_take_profit}); risk: {risk}; entries_today={self.entries_today}/{self.max_attempts if self.max_attempts is not None else 'unlimited'}"
             })
 
     def reset_after_exit(self):
@@ -394,5 +406,6 @@ class SymbolState:
         self.order_rejected = False
         self.pending_retry = False
         self.retry_count = 0  # Reset retry count after exit
-        # Do not reset triggered or day_low, as re-entries are not allowed per day
-        # With retry enabled, keeping 'triggered' True allows re-arming above; limit enforced via entries_today/MAX_ENTRIES
+        self.trigger_time = None  # Reset trigger so re-entry requires trigger hit again
+        # Keep triggered=True to allow checking for re-entry conditions
+        # Re-entry limit enforced via entries_today/max_attempts

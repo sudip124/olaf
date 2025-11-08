@@ -4,7 +4,7 @@ import os
 import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from strategies.strat80_20.backtest_analysis import build_backtest_journal, calculate_symbol_kpis
+from analysis.backtest_journal_base import BacktestJournalBuilder
 
 # Make sure project root is on sys.path when running from subfolders
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -59,20 +59,38 @@ def do_backtest(cfg: Dict[str, Any]) -> None:
         max_attempts=max_attempts
     )
     
-    # Build journal and calculate KPIs
+    # Build journal and analyze using generic AnalysisService
     if backtest_run_id is not None:
         try:
-            inserted = build_backtest_journal(backtest_run_id, strategy_name='strat80_20')
-            print(f"[Backtest] Built backtest_journal with {inserted} row(s)")
+            # Create journal builder instance
+            from strategies.strat80_20.journal_builder_8020 import JournalBuilder8020
+            journal_builder: BacktestJournalBuilder = JournalBuilder8020(strategy_name='strat80_20')
+            
+            # Build journal DataFrame (includes setup metrics)
+            journal_df = journal_builder.build(backtest_run_id)
+            print(f"[Backtest] Built journal DataFrame with {len(journal_df)} row(s)")
+            
+            if not journal_df.empty:
+                # Use generic AnalysisService to store and analyze
+                from analysis.analysis_service import AnalysisService
+                
+                # Create analysis service and process
+                analysis = AnalysisService(strategy_name='strat80_20')
+                kpi_df = analysis.analyze_and_store(
+                    journal_df=journal_df,
+                    backtest_run_id=backtest_run_id
+                )
+                
+                print(f"[Analysis] Completed analysis and storage for backtest #{backtest_run_id}")
+            else:
+                print(f"[Backtest] Warning: journal DataFrame is empty, skipping analysis")
+                
         except Exception as e:
-            print(f"[Backtest] Warning: failed to build backtest_journal: {e}")
-            backtest_run_id = None  # Don't proceed to KPI calculation if journal failed
-        
-        # KPI analysis is now executed and saved inside build_backtest_journal
-        if backtest_run_id is not None:
-            print(f"[KPI Analysis] KPI computation delegated to journal builder for backtest_id {backtest_run_id}.")
+            print(f"[Backtest] Warning: failed to build journal or analyze: {e}")
+            import traceback
+            traceback.print_exc()
     else:
-        print(f"[Backtest] Warning: backtest_run_id is None, skipping journal and KPI analysis")
+        print(f"[Backtest] Warning: backtest_run_id is None, skipping journal and analysis")
 
 
 def do_live(cfg: Dict[str, Any]) -> None:
@@ -230,7 +248,7 @@ def do_live(cfg: Dict[str, Any]) -> None:
             max_attempts=max_attempts,
             max_order_retries=max_order_retries,
             take_profit_mult_param=strategy_params.get('take_profit_mult', 3.0),
-            initial_sl_mult_param=strategy_params.get('initial_sl_mult', 0.5),
+            initial_sl_ticks_param=strategy_params.get('initial_sl_ticks', 20),
             use_take_profit_param=strategy_params.get('use_take_profit', False),
             trigger_window_minutes_param=strategy_params.get('trigger_window_minutes', 60)
         )
