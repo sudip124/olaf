@@ -1,5 +1,5 @@
 {
-    "mode": "live",
+    "mode": "backtest",
     "strategy": "strat80_20",
     "db_path": "db/nse.db",
     "scan": {
@@ -12,7 +12,7 @@
             "KFINTECH"
         ],
         "from_date": "2025-11-07",
-        "to_date": "2025-11-11",
+        "to_date": "",
         "interval": "D",
         "volume_threshold": 100000,
         "sort_by_volume": true,
@@ -21,39 +21,37 @@
     },
     "backtest": {
         "symbols": [
-            "APLAPOLLO",
             "AUBANK",
-            "ABSLAMC",
-            "AFCONS",
-            "ANANTRAJ",
-            "CENTRALBK",
-            "CLEAN",
-            "COHANCE",
-            "DIVISLAB",
-            "FIVESTAR",
-            "GLAXO",
-            "GRANULES",
+            "APTUS",
+            "ASHOKLEY",
+            "ATHERENERG",
+            "DMART",
+            "CUB",
+            "NYKAA",
+            "GPIL",
+            "GRASIM",
+            "HEG",
             "HBLENGINE",
-            "INTELLECT",
-            "JUBLPHARMA",
-            "KPIL",
-            "KIMS",
-            "NAM-INDIA",
-            "OBEROIRLTY",
-            "OLECTRA",
-            "PRAJIND",
-            "SBFC",
-            "SARDAEN",
-            "ENRIN",
-            "SOBHA",
-            "RAMCOCEM",
-            "UCOBANK",
+            "HSCL",
+            "HAL",
+            "HINDCOPPER",
+            "HINDZINC",
+            "JSL",
+            "M&MFIN",
+            "NAVA",
+            "NAVINFLUOR",
+            "POLICYBZR",
+            "PIIND",
+            "PVRINOX",
+            "PRESTIGE",
+            "SAIL",
+            "TATASTEEL",
+            "TORNTPOWER",
             "UTIAMC",
-            "WHIRLPOOL",
-            "WOCKPHARMA"
+            "VBL"
         ],
         "from_date": "2025-05-01",
-        "to_date": "2025-11-11",
+        "to_date": "",
         "scan_interval": "D",
         "backtest_interval": "15m",
         "optimize": false,
@@ -73,77 +71,51 @@
         "order_validity": "DAY",
         "setups": [
             {
-                "symbol": "ABSLAMC",
-                "setup_date": "2025-11-11T00:00:00.000",
-                "entry_date": "2025-11-12T00:00:00.000",
-                "entry_price": 731.1,
-                "trigger_price": 730.6,
-                "tick_size": 0.05,
-                "true_range": 23.95
-            },
-            {
-                "symbol": "ENRIN",
-                "setup_date": "2025-11-11T00:00:00.000",
-                "entry_date": "2025-11-12T00:00:00.000",
-                "entry_price": 3225.0,
-                "trigger_price": 3224.0,
+                "symbol": "PVRINOX",
+                "setup_date": "2025-11-12T00:00:00.000",
+                "entry_date": "2025-11-13T00:00:00.000",
+                "entry_price": 1093.5,
+                "trigger_price": 1092.5,
                 "tick_size": 0.1,
-                "true_range": 103.6
+                "true_range": 40.2
             },
             {
-                "symbol": "SARDAEN",
-                "setup_date": "2025-11-11T00:00:00.000",
-                "entry_date": "2025-11-12T00:00:00.000",
-                "entry_price": 525.55,
-                "trigger_price": 525.05,
+                "symbol": "M&MFIN",
+                "setup_date": "2025-11-12T00:00:00.000",
+                "entry_date": "2025-11-13T00:00:00.000",
+                "entry_price": 306.7,
+                "trigger_price": 306.2,
                 "tick_size": 0.05,
-                "true_range": 19.0
+                "true_range": 13.1
             },
             {
-                "symbol": "CLEAN",
-                "setup_date": "2025-11-11T00:00:00.000",
-                "entry_date": "2025-11-12T00:00:00.000",
-                "entry_price": 924.4,
-                "trigger_price": 923.4,
-                "tick_size": 0.1,
-                "true_range": 15.9
-            },
-            {
-                "symbol": "COHANCE",
-                "setup_date": "2025-11-11T00:00:00.000",
-                "entry_date": "2025-11-12T00:00:00.000",
-                "entry_price": 688.0,
-                "trigger_price": 687.5,
+                "symbol": "HINDCOPPER",
+                "setup_date": "2025-11-12T00:00:00.000",
+                "entry_date": "2025-11-13T00:00:00.000",
+                "entry_price": 338.5,
+                "trigger_price": 338.0,
                 "tick_size": 0.05,
-                "true_range": 20.05
+                "true_range": 21.4
             },
             {
-                "symbol": "DIVISLAB",
-                "setup_date": "2025-11-11T00:00:00.000",
-                "entry_date": "2025-11-12T00:00:00.000",
-                "entry_price": 6489.0,
-                "trigger_price": 6484.0,
-                "tick_size": 0.5,
-                "true_range": 236.0
-            },
-            {
-                "symbol": "WHIRLPOOL",
-                "setup_date": "2025-11-11T00:00:00.000",
-                "entry_date": "2025-11-12T00:00:00.000",
-                "entry_price": 1232.0,
-                "trigger_price": 1231.0,
-                "tick_size": 0.1,
-                "true_range": 59.7
-            },
-            {
-                "symbol": "PRAJIND",
-                "setup_date": "2025-11-11T00:00:00.000",
-                "entry_date": "2025-11-12T00:00:00.000",
-                "entry_price": 325.0,
-                "trigger_price": 324.5,
+                "symbol": "GPIL",
+                "setup_date": "2025-11-12T00:00:00.000",
+                "entry_date": "2025-11-13T00:00:00.000",
+                "entry_price": 266.1,
+                "trigger_price": 265.6,
                 "tick_size": 0.05,
-                "true_range": 7.45
+                "true_range": 11.5
+            },
+            {
+                "symbol": "TATASTEEL",
+                "setup_date": "2025-11-12T00:00:00.000",
+                "entry_date": "2025-11-13T00:00:00.000",
+                "entry_price": 178.0,
+                "trigger_price": 177.9,
+                "tick_size": 0.01,
+                "true_range": 4.15
             }
         ]
+
     }
 }

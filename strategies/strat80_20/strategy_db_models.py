@@ -48,6 +48,27 @@ class BacktestRun(Base):
 
 
 
+class ScanResult(Base):
+    """Table to store scanner outputs (setup days) for strat80_20."""
+    __tablename__ = 'scan_results'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_timestamp = Column(DateTime, nullable=False, default=datetime.now)
+    timestep = Column(String(10), nullable=False)  # e.g., 'D'
+    
+    # Setup fields
+    symbol = Column(String(50), nullable=False)
+    setup_date = Column(Date, nullable=False)
+    entry_date = Column(Date, nullable=False)
+    entry_price = Column(Float, nullable=False)
+    trigger_price = Column(Float, nullable=False)
+    tick_size = Column(Float, nullable=False)
+    true_range = Column(Float, nullable=False)
+    
+    def __repr__(self):
+        return f"<ScanResult(symbol={self.symbol}, setup_date={self.setup_date}, timestep={self.timestep})>"
+
+
 class TradeLog(Base):
     """Table to store all trade events and signals during backtest."""
     __tablename__ = 'trade_logs'
@@ -502,5 +523,46 @@ def update_live_run_status(live_run_id, status, strategy_name='strat80_20'):
     except Exception as e:
         session.rollback()
         print(f"Error updating live run status: {e}")
+    finally:
+        session.close()
+
+
+def save_scan_results(df, timestep: str, strategy_name: str = 'strat80_20') -> int:
+    """Persist scanner output rows to the ScanResult table.
+    Returns number of rows inserted.
+    """
+    import pandas as pd
+    if df is None or df.empty:
+        return 0
+    # Ensure DB/tables exist
+    engine = init_db(strategy_name)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        count = 0
+        for _, row in df.iterrows():
+            # Parse dates robustly
+            setup_dt = pd.to_datetime(row['setup_date']).date()
+            entry_dt = pd.to_datetime(row['entry_date']).date()
+            rec = ScanResult(
+                run_timestamp=datetime.now(),
+                timestep=str(timestep),
+                symbol=str(row['symbol']),
+                setup_date=setup_dt,
+                entry_date=entry_dt,
+                entry_price=float(row['entry_price']),
+                trigger_price=float(row['trigger_price']),
+                tick_size=float(row['tick_size']),
+                true_range=float(row['true_range'])
+            )
+            session.add(rec)
+            count += 1
+        session.commit()
+        print(f"[Database] Saved {count} scan result(s) to '{strategy_name}' DB")
+        return count
+    except Exception as e:
+        session.rollback()
+        print(f"Error saving scan results: {e}")
+        return 0
     finally:
         session.close()

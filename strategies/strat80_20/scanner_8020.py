@@ -5,6 +5,7 @@ import pandas as pd
 from strategies.base_scanner import Scanner
 from strategies.strat80_20.backtest_config import EXCHANGE
 from data_manager.data_fetcher import fetch_historical_data, fetch_instrument_info
+from strategies.strat80_20.strategy_db_models import save_scan_results
 
 # Load config params from strat_config.json
 _CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'strat_config.json')
@@ -80,5 +81,12 @@ class Scanner8020(Scanner):
                 'tick_size': tick_size,
                 'true_range': round(float(row['tr']), 2),
             })
-        return pd.DataFrame.from_records(records)
+        df_out = pd.DataFrame.from_records(records)
+        try:
+            # Persist scan results with timestep = interval
+            save_scan_results(df_out, timestep=interval, strategy_name=self.strategy_name)
+        except Exception as _e:
+            # Non-fatal if DB write fails
+            print(f"[Scan] Warning: failed to save scan results to DB: {_e}")
+        return df_out
 

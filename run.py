@@ -41,9 +41,11 @@ def do_backtest(cfg: Dict[str, Any]) -> None:
     # Required: date range
     from_date: Optional[str] = backtest_cfg.get("from_date")
     to_date: Optional[str] = backtest_cfg.get("to_date")
-    if not from_date or not to_date:
-        print("Error: 'from_date' and 'to_date' must be specified in backtest config")
+    if not from_date:
+        print("Error: 'from_date' must be specified in backtest config")
         sys.exit(1)
+    if not to_date:
+        to_date = datetime.now().date().isoformat()
 
     # Optional parameters
     optimize: bool = bool(backtest_cfg.get("optimize", False))
@@ -329,10 +331,18 @@ def do_scan(cfg: Dict[str, Any]) -> None:
     # Dates
     to_date = scan_cfg.get("to_date")
     if not to_date:
-        to_date = __import__("datetime").date.today().isoformat()
-    from_date = scan_cfg.get("from_date")
-    if not from_date:
-        from_date = ( __import__("datetime").date.today() - __import__("datetime").timedelta(days=5) ).isoformat()
+        today = __import__("datetime").date.today()
+        to_date = today.isoformat()
+        from_date = (today - __import__("datetime").timedelta(days=4)).isoformat()
+    else:
+        from_date = scan_cfg.get("from_date")
+        if not from_date:
+            try:
+                to_dt = __import__("datetime").date.fromisoformat(to_date)
+                from_date = (to_dt - __import__("datetime").timedelta(days=4)).isoformat()
+            except Exception:
+                # Fallback to 4 days before today if parsing fails
+                from_date = ( __import__("datetime").date.today() - __import__("datetime").timedelta(days=4) ).isoformat()
 
     # Other options
     interval = scan_cfg.get("interval", "D")
