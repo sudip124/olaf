@@ -40,41 +40,12 @@ class BacktestRun(Base):
     optimize = Column(Boolean, default=False)
     
     # Relationships
-    setup_days = relationship('SetupDay', back_populates='backtest_run', cascade='all, delete-orphan')
     trade_logs = relationship('TradeLog', back_populates='backtest_run', cascade='all, delete-orphan')
     
     def __repr__(self):
         return f"<BacktestRun(id={self.id}, timestamp={self.run_timestamp}, from={self.from_date}, to={self.to_date})>"
 
 
-class SetupDay(Base):
-    """Table to store individual setup days detected during backtest."""
-    __tablename__ = 'setup_days'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    backtest_run_id = Column(Integer, ForeignKey('backtest_runs.id'), nullable=False)
-    
-    # Setup day information
-    symbol = Column(String(50), nullable=False)
-    setup_date = Column(Date, nullable=False)
-    weekday = Column(String(10), nullable=False)  # Monday, Tuesday, etc.
-    
-    # Trading parameters
-    entry_price = Column(Float)
-    trigger_price = Column(Float)
-    tick_size = Column(Float)
-    true_range = Column(Float)
-    volume = Column(Integer)
-    
-    # Position metrics
-    open_pos = Column(Float)
-    close_pos = Column(Float)
-    
-    # Relationship back to backtest run
-    backtest_run = relationship('BacktestRun', back_populates='setup_days')
-    
-    def __repr__(self):
-        return f"<SetupDay(symbol={self.symbol}, date={self.setup_date}, weekday={self.weekday})>"
 
 
 class TradeLog(Base):
@@ -223,75 +194,8 @@ def save_backtest_data(from_date, to_date, scan_interval, backtest_interval,
             optimize=optimize
         )
         session.add(backtest_run)
-        session.flush()  # Get the ID without committing
-        
-        # Create setup day records
-        setup_count = 0
-        for symbol, setup_data in setup_days_map.items():
-            # Handle both list of dates and DataFrame formats
-            if isinstance(setup_data, pd.DataFrame):
-                # Skip empty DataFrames
-                if setup_data.empty:
-                    continue
-                    
-                # DataFrame with detailed setup information
-                for idx, row in setup_data.iterrows():
-                    try:
-                        # Handle setup_date conversion
-                        if isinstance(row['setup_date'], dt.date):
-                            setup_date_val = row['setup_date']
-                        elif isinstance(row['setup_date'], pd.Timestamp):
-                            setup_date_val = row['setup_date'].date()
-                        else:
-                            setup_date_val = dt.datetime.fromisoformat(str(row['setup_date'])).date()
-                        
-                        setup_day = SetupDay(
-                            backtest_run_id=backtest_run.id,
-                            symbol=symbol,
-                            setup_date=setup_date_val,
-                            weekday=setup_date_val.strftime('%A'),
-                            entry_price=float(row.get('entry_price')) if pd.notna(row.get('entry_price')) else None,
-                            trigger_price=float(row.get('trigger_price')) if pd.notna(row.get('trigger_price')) else None,
-                            tick_size=float(row.get('tick_size')) if pd.notna(row.get('tick_size')) else None,
-                            true_range=float(row.get('true_range')) if pd.notna(row.get('true_range')) else None,
-                            volume=int(row.get('volume')) if pd.notna(row.get('volume')) else None,
-                            open_pos=float(row.get('open_pos')) if pd.notna(row.get('open_pos')) else None,
-                            close_pos=float(row.get('close_pos')) if pd.notna(row.get('close_pos')) else None
-                        )
-                        session.add(setup_day)
-                        setup_count += 1
-                    except Exception as row_error:
-                        print(f"[Database] Warning: Failed to save setup day for {symbol} at index {idx}: {row_error}")
-                        continue
-            elif isinstance(setup_data, list):
-                # Skip empty lists
-                if not setup_data:
-                    continue
-                    
-                # List of date objects
-                for setup_date in setup_data:
-                    try:
-                        if isinstance(setup_date, str):
-                            setup_date_val = dt.datetime.fromisoformat(setup_date).date()
-                        elif isinstance(setup_date, dt.date):
-                            setup_date_val = setup_date
-                        else:
-                            setup_date_val = setup_date
-                        
-                        setup_day = SetupDay(
-                            backtest_run_id=backtest_run.id,
-                            symbol=symbol,
-                            setup_date=setup_date_val,
-                            weekday=setup_date_val.strftime('%A')
-                        )
-                        session.add(setup_day)
-                        setup_count += 1
-                    except Exception as date_error:
-                        print(f"[Database] Warning: Failed to save setup date {setup_date} for {symbol}: {date_error}")
-                        continue
-        
         session.commit()
-        print(f"\n[Database] Saved backtest run #{backtest_run.id} with {setup_count} setup days")
+        print(f"\n[Database] Saved backtest run #{backtest_run.id}")
         return backtest_run.id
         
     except Exception as e:

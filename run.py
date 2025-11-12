@@ -17,8 +17,17 @@ def load_config(path: str) -> Dict[str, Any]:
 
 
 def do_backtest(cfg: Dict[str, Any]) -> None:
+    # Get strategy name from config
+    strategy_name = cfg.get("strategy", "strat80_20")
+    
     # Lazy import to ensure DB_PATH from config/env is set before modules load
-    from strategies.strat80_20.backtest_8020 import run_backtest
+    from strategies.strategy_loader import load_backtest_strategy
+    
+    try:
+        strategy = load_backtest_strategy(strategy_name)
+    except (ValueError, ImportError, AttributeError) as e:
+        print(f"Error loading backtest strategy '{strategy_name}': {e}")
+        sys.exit(1)
 
     # Extract backtest config
     backtest_cfg = cfg.get("backtest", {})
@@ -44,11 +53,11 @@ def do_backtest(cfg: Dict[str, Any]) -> None:
     if max_attempts is not None:
         max_attempts = int(max_attempts)
 
-    print(f"[Backtest] strategy=strat80_20 optimize={optimize} symbols={symbols}")
+    print(f"[Backtest] strategy={strategy_name} optimize={optimize} symbols={symbols}")
     print(f"[Backtest] from_date={from_date} to_date={to_date} scan_interval={scan_interval} backtest_interval={backtest_interval}")
     print(f"[Backtest] max_attempts={max_attempts}")
     
-    journal_df, backtest_run_id = run_backtest(
+    journal_df, backtest_run_id = strategy.run_backtest(
         symbols=symbols, 
         from_date=from_date,
         to_date=to_date,
@@ -63,7 +72,7 @@ def do_backtest(cfg: Dict[str, Any]) -> None:
         try:
             if not journal_df.empty:
                 from analysis.analysis_service import AnalysisService
-                analysis = AnalysisService(strategy_name='strat80_20')
+                analysis = AnalysisService(strategy_name=strategy_name)
                 kpi_df = analysis.analyze_and_store(
                     journal_df=journal_df,
                     backtest_run_id=backtest_run_id
@@ -81,171 +90,145 @@ def do_backtest(cfg: Dict[str, Any]) -> None:
 
 def do_live(cfg: Dict[str, Any]) -> None:
     """
-    Live trading dispatcher. Runs scanner and starts live trading.
-    Similar to do_backtest() but for live trading.
+    Live trading dispatcher. Uses precomputed setups from config and starts live trading.
+    Does not perform any scanning.
     """
-    strategy = cfg.get("strategy", "strat80_20")
-
-    if strategy == "strat80_20":
-        # Lazy imports
-        from strategies.strat80_20.live_8020 import start_trading
-        from strategies.strat80_20.scanner_long import get_setup_days
-        from data_manager.config import ensure_directories
-        import json
-
-        # Ensure directories exist
-        try:
-            ensure_directories()
-        except Exception as e:
-            print(f"[Live] Warning: failed to ensure directories: {e}")
-
-        # Extract live config
-        live_cfg = cfg.get("live", {})
-        
-        # Check if setups are provided directly (skip scanning)
-        provided_setups = live_cfg.get("setups")
-        
-        # Required: either symbols to scan OR pre-configured setups
-        symbols: Optional[List[str]] = live_cfg.get("symbols")
-        if not symbols and not provided_setups:
-            print("Error: Either 'symbols' or 'setups' must be specified in live config")
-            sys.exit(1)
-
-        # Dates for scanning (default: today - 5 days to today)
-        to_date = live_cfg.get("to_date")
-        if not to_date:
-            to_date = __import__("datetime").date.today().isoformat()
-        from_date = live_cfg.get("from_date")
-        if not from_date:
-            from_date = (__import__("datetime").date.today() - __import__("datetime").timedelta(days=5)).isoformat()
-
-        # Scanner parameters
-        scan_interval = live_cfg.get("scan_interval", "D")
-        volume_threshold = int(live_cfg.get("volume_threshold", 100000))
-        sort_by_volume = bool(live_cfg.get("sort_by_volume", True))
-        max_attempts = live_cfg.get("max_attempts")  # None means no limit
-        if max_attempts is not None:
-            max_attempts = int(max_attempts)
-        
-        # Trading parameters
-        timezone = live_cfg.get("timezone", "Asia/Kolkata")
-        market_open_hour = int(live_cfg.get("market_open_hour", 9))
-        market_open_minute = int(live_cfg.get("market_open_minute", 15))
-        market_close_hour = int(live_cfg.get("market_close_hour", 15))
-        market_close_minute = int(live_cfg.get("market_close_minute", 30))
-        fixed_qty = int(live_cfg.get("fixed_qty", 1))
-        product_type = live_cfg.get("product_type", "MIS")
-        order_validity = live_cfg.get("order_validity", "DAY")
-        max_order_retries = live_cfg.get("max_order_retries", 3)
-        if max_order_retries is not None:
-            max_order_retries = int(max_order_retries)
-
-        # Load strategy config for trading parameters
-        config_path = os.path.join(ROOT_DIR, 'strategies', 'strat80_20', 'strat_config.json')
-        if not os.path.exists(config_path):
-            print(f"Strategy config not found: {config_path}")
-            sys.exit(1)
-        
-        with open(config_path, 'r') as f:
-            strategy_params = json.load(f)
-        
-        # Remove opt_ranges (only needed for optimization)
-        strategy_params.pop('opt_ranges', None)
-
-        print(f"[Live] strategy={strategy} symbols={symbols}")
-        print(f"[Live] scan_range={from_date}..{to_date} interval={scan_interval}")
-        print(f"[Live] timezone={timezone} market_hours={market_open_hour}:{market_open_minute:02d}-{market_close_hour}:{market_close_minute:02d}")
-        print(f"[Live] fixed_qty={fixed_qty} product_type={product_type} max_order_retries={max_order_retries}")
-        
-        # Phase 1: Get setups (either from config or by scanning)
-        import pandas as pd
-        
-        if provided_setups:
-            # Use pre-configured setups (skip scanning)
-            print("\n[Live] Phase 1: Using pre-configured setups (skipping scan)...")
-            setups_df = pd.DataFrame(provided_setups)
-            
-            # Validate required columns
-            required_cols = ['symbol', 'entry_price', 'trigger_price', 'tick_size', 'true_range']
-            missing_cols = [col for col in required_cols if col not in setups_df.columns]
-            if missing_cols:
-                print(f"Error: Pre-configured setups missing required columns: {missing_cols}")
-                sys.exit(1)
-            
-            print(f"[Live] Loaded {len(setups_df)} pre-configured setup(s)")
-        else:
-            # Run scanner to get today's setups
-            print("\n[Live] Phase 1: Scanning for setups...")
-            print(f"[Live] scan_range={from_date}..{to_date} interval={scan_interval} symbols={symbols}")
-            
-            all_setups = []
-            for symbol in symbols:
-                print(f"[Live] Scanning {symbol}...")
-                try:
-                    setup_df = get_setup_days(
-                        symbol=symbol,
-                        from_date=from_date,
-                        to_date=to_date,
-                        interval=scan_interval,
-                        volume_threshold=volume_threshold,
-                        return_details=True
-                    )
-                    if not setup_df.empty:
-                        # Only take the latest setup for live trading
-                        latest_setup = setup_df.iloc[-1:]
-                        all_setups.append(latest_setup)
-                        print(f"[Live] Found setup for {symbol}: entry_price={latest_setup['entry_price'].values[0]}")
-                    else:
-                        print(f"[Live] No setups found for {symbol}")
-                except Exception as e:
-                    print(f"[Live] Error scanning {symbol}: {e}")
-            
-            if not all_setups:
-                print("\n[Live] No setups found. Exiting.")
-                sys.exit(0)
-            
-            # Combine all setups
-            setups_df = pd.concat(all_setups, ignore_index=True)
-        
-        # Sort by volume if requested
-        if sort_by_volume:
-            setups_df = setups_df.sort_values('volume', ascending=False)
-        
-        if max_attempts is not None and len(setups_df) > max_attempts:
-            print(f"\n[Live] Found {len(setups_df)} setups, limiting to {max_attempts} attempts")
-            setups_df = setups_df.head(max_attempts)
-        
-        print(f"\n[Live] Total setups to trade: {len(setups_df)}")
-        if not setups_df.empty:
-            print(setups_df[['symbol', 'setup_date', 'entry_date', 'entry_price', 'trigger_price', 'volume']].to_string(index=False))
-        
-        # Phase 2: Start live trading with setups
-        print("\n[Live] Phase 2: Starting live trading...")
-        start_trading(
-            setups_df=setups_df,
-            timezone_str=timezone,
-            market_open_hour=market_open_hour,
-            market_open_minute=market_open_minute,
-            market_close_hour=market_close_hour,
-            market_close_minute=market_close_minute,
-            fixed_qty=fixed_qty,
-            product_type=product_type,
-            order_validity=order_validity,
-            max_attempts=max_attempts,
-            max_order_retries=max_order_retries,
-            take_profit_mult_param=strategy_params.get('take_profit_mult', 3.0),
-            initial_sl_ticks_param=strategy_params.get('initial_sl_ticks', 20),
-            use_take_profit_param=strategy_params.get('use_take_profit', False),
-            trigger_window_minutes_param=strategy_params.get('trigger_window_minutes', 60)
-        )
-    else:
-        print(f"Live mode not implemented for strategy '{strategy}' yet.")
+    strategy_name = cfg.get("strategy", "strat80_20")
+    
+    # Lazy imports
+    from strategies.strategy_loader import load_live_strategy
+    from data_manager.config import ensure_directories
+    import json
+    
+    # Load strategy dynamically
+    try:
+        strategy = load_live_strategy(strategy_name)
+    except (ValueError, ImportError, AttributeError) as e:
+        print(f"Error loading live strategy '{strategy_name}': {e}")
         sys.exit(1)
+
+    # Ensure directories exist
+    try:
+        ensure_directories()
+    except Exception as e:
+        print(f"[Live] Warning: failed to ensure directories: {e}")
+
+    # Extract live config
+    live_cfg = cfg.get("live", {})
+    
+    # Required: pre-configured setups must be provided
+    provided_setups = live_cfg.get("setups")
+    if not provided_setups:
+        print("Error: 'live.setups' must be specified and contain at least one setup for live trading")
+        sys.exit(1)
+    
+    # Trading parameters
+    timezone = live_cfg.get("timezone", "Asia/Kolkata")
+    market_open_hour = int(live_cfg.get("market_open_hour", 9))
+    market_open_minute = int(live_cfg.get("market_open_minute", 15))
+    market_close_hour = int(live_cfg.get("market_close_hour", 15))
+    market_close_minute = int(live_cfg.get("market_close_minute", 30))
+    fixed_qty = int(live_cfg.get("fixed_qty", 1))
+    product_type = live_cfg.get("product_type", "MIS")
+    order_validity = live_cfg.get("order_validity", "DAY")
+    max_order_retries = live_cfg.get("max_order_retries", 3)
+    if max_order_retries is not None:
+        max_order_retries = int(max_order_retries)
+
+    # New optional live controls
+    order_timeout_minutes = live_cfg.get("order_timeout_minutes")
+    if order_timeout_minutes is not None:
+        try:
+            order_timeout_minutes = int(order_timeout_minutes)
+        except Exception:
+            print("[Live] Warning: invalid order_timeout_minutes; using default inside strategy")
+            order_timeout_minutes = None
+    exit_before_close_minutes = live_cfg.get("exit_before_close_minutes")
+    if exit_before_close_minutes is not None:
+        try:
+            exit_before_close_minutes = int(exit_before_close_minutes)
+        except Exception:
+            print("[Live] Warning: invalid exit_before_close_minutes; using default inside strategy")
+            exit_before_close_minutes = None
+    # New: optional ignore_initial_minutes to ignore ticks after market open
+    ignore_initial_minutes = live_cfg.get("ignore_initial_minutes")
+    if ignore_initial_minutes is not None:
+        try:
+            ignore_initial_minutes = int(ignore_initial_minutes)
+        except Exception:
+            print("[Live] Warning: invalid ignore_initial_minutes; defaulting to 1 minute inside strategy")
+            ignore_initial_minutes = None
+
+    # Load strategy config for trading parameters
+    config_path = os.path.join(ROOT_DIR, 'strategies', strategy_name, 'strat_config.json')
+    if not os.path.exists(config_path):
+        print(f"Strategy config not found: {config_path}")
+        sys.exit(1)
+    
+    with open(config_path, 'r') as f:
+        strategy_params = json.load(f)
+    
+    # Remove opt_ranges (only needed for optimization)
+    strategy_params.pop('opt_ranges', None)
+
+    print(f"[Live] strategy={strategy_name} (using precomputed setups)")
+    print(f"[Live] timezone={timezone} market_hours={market_open_hour}:{market_open_minute:02d}-{market_close_hour}:{market_close_minute:02d}")
+    print(f"[Live] fixed_qty={fixed_qty} product_type={product_type} max_order_retries={max_order_retries}")
+    
+    # Phase 1: Use pre-configured setups only
+    import pandas as pd
+    print("\n[Live] Phase 1: Using pre-configured setups (no scan)...")
+    setups_df = pd.DataFrame(provided_setups)
+    
+    # Validate required columns
+    required_cols = ['symbol', 'entry_price', 'trigger_price', 'tick_size', 'true_range']
+    missing_cols = [col for col in required_cols if col not in setups_df.columns]
+    if missing_cols:
+        print(f"Error: Pre-configured setups missing required columns: {missing_cols}")
+        sys.exit(1)
+    
+    print(f"[Live] Loaded {len(setups_df)} pre-configured setup(s)")
+    
+    # Parse max_attempts for per-symbol re-entry limiting (do not limit number of symbols)
+    max_attempts = live_cfg.get("max_attempts")  # None means no limit
+    if max_attempts is not None:
+        try:
+            max_attempts = int(max_attempts)
+        except Exception:
+            print("[Live] Warning: invalid max_attempts; using unlimited per-symbol attempts")
+            max_attempts = None
+    
+    print(f"\n[Live] Total setups to trade: {len(setups_df)}")
+    if not setups_df.empty:
+        print(setups_df[['symbol', 'setup_date', 'entry_date', 'entry_price', 'trigger_price']].to_string(index=False))
+    
+    # Phase 2: Start live trading with setups
+    print("\n[Live] Phase 2: Starting live trading...")
+    strategy.start_trading(
+        setups_df=setups_df,
+        timezone_str=timezone,
+        market_open_hour=market_open_hour,
+        market_open_minute=market_open_minute,
+        market_close_hour=market_close_hour,
+        market_close_minute=market_close_minute,
+        fixed_qty=fixed_qty,
+        product_type=product_type,
+        order_validity=order_validity,
+        max_attempts=max_attempts,
+        max_order_retries=max_order_retries,
+        take_profit_mult=strategy_params.get('take_profit_mult', 3.0),
+        initial_sl_ticks=strategy_params.get('initial_sl_ticks', 20),
+        use_take_profit=strategy_params.get('use_take_profit', False),
+        trigger_window_minutes=strategy_params.get('trigger_window_minutes', 60)
+        ,order_timeout_minutes=order_timeout_minutes
+        ,exit_before_close_minutes=exit_before_close_minutes
+        ,ignore_initial_minutes=ignore_initial_minutes
+    )
 
 
 def do_scan(cfg: Dict[str, Any]) -> None:
     """
-    Run the strategy's scanner and write results to JSON. Currently supports strat80_20 scanner_long.
+    Run the strategy's scanner and write results to JSON.
     Config options:
       - scan.symbols: list[str] (required)
       - scan.from_date: ISO date (default: today - 5 days)
@@ -255,15 +238,92 @@ def do_scan(cfg: Dict[str, Any]) -> None:
       - scan.sort_by_volume: bool (default: True)
       - scan.output_file: path (default: ROOT_DIR/scanner_setups.json)
     """
-    strategy = cfg.get("strategy", "strat80_20")
+    strategy_name = cfg.get("strategy", "strat80_20")
+    
+    # Load scanner dynamically via Scanner ABC
+    from strategies.strategy_loader import load_scanner_strategy
+    try:
+        scanner = load_scanner_strategy(strategy_name)
+    except (ValueError, ImportError, AttributeError) as e:
+        print(f"Error loading strategy '{strategy_name}': {e}")
+        sys.exit(1)
 
     # Extract scan config
     scan_cfg = cfg.get("scan", {})
 
-    # Symbols (required)
+    # Symbols selection logic with support for symbol lists (no global symbols.csv)
     symbols: Optional[List[str]] = scan_cfg.get("symbols")
-    if not symbols:
-        print("Error: 'symbols' must be specified in scan config")
+    use_symbols_csv_val = scan_cfg.get("use_symbols_csv")  # can be str filename or falsy
+
+    def _read_symbols_from_file(path: str, label: str) -> List[str]:
+        try:
+            # Read file contents once (supports CSV with headers or plain list)
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Remove empty/comment-only lines first to simplify parsing
+            raw_lines = [ln for ln in content.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+
+            syms: List[str] = []
+
+            # Try CSV parsing to pull 'Symbol' column (case-insensitive)
+            if raw_lines:
+                csv = __import__("csv")
+                io = __import__("io")
+                reader = csv.reader(io.StringIO("\n".join(raw_lines)))
+                try:
+                    header = next(reader)
+                except StopIteration:
+                    header = []
+
+                # Find 'Symbol' column index if present
+                idx = -1
+                for i, col in enumerate(header):
+                    if isinstance(col, str) and col.strip().lower() == "symbol":
+                        idx = i
+                        break
+
+                if idx >= 0:
+                    # Read remaining rows using the Symbol column
+                    for row in reader:
+                        if idx < len(row):
+                            s = (row[idx] or "").strip()
+                            if s and not s.startswith("#"):
+                                syms.append(s)
+                else:
+                    # No header or no 'Symbol' column: treat as plain list or first-column CSV
+                    for line in raw_lines:
+                        # Take first token before comma/whitespace
+                        token = line.split(",", 1)[0].strip()
+                        if token and not token.startswith("#"):
+                            syms.append(token)
+
+            if not syms:
+                print(f"Error: {label} at {path} did not contain any symbols")
+                sys.exit(1)
+            print(f"[Scan] Loaded {len(syms)} symbols from {label}")
+            return syms
+        except FileNotFoundError:
+            print(f"Error: {label} not found at {path}")
+            sys.exit(1)
+
+    # Priority:
+    # 1) If use_symbols_csv is a non-empty string, read from symbol_list/<file>
+    # 2) Else if symbols provided (array), use them
+    # 3) Else error
+    if isinstance(use_symbols_csv_val, str) and use_symbols_csv_val.strip():
+        fname = use_symbols_csv_val.strip()
+        list_dir = os.path.join(ROOT_DIR, "symbol_list")
+        csv_path = os.path.join(list_dir, fname)
+        if not os.path.exists(csv_path) and not fname.lower().endswith(".csv"):
+            # Try with .csv appended
+            csv_path = os.path.join(list_dir, f"{fname}.csv")
+        symbols = _read_symbols_from_file(csv_path, f"symbol_list file '{fname}'")
+    elif isinstance(symbols, list) and symbols:
+        # Keep as provided
+        pass
+    else:
+        print("Error: Provide either scan.use_symbols_csv (filename under symbol_list) or scan.symbols array")
         sys.exit(1)
 
     # Dates
@@ -280,60 +340,57 @@ def do_scan(cfg: Dict[str, Any]) -> None:
     sort_by_volume = bool(scan_cfg.get("sort_by_volume", True))
     output_file = scan_cfg.get("output_file") or os.path.join(ROOT_DIR, "scanner_setups.json")
 
-    if strategy == "strat80_20":
-        # Ensure DB/logs directories exist before importing modules that open the SQLite engine
+    # Ensure DB/logs directories exist before importing modules that open the SQLite engine
+    try:
+        from data_manager.config import ensure_directories
+        ensure_directories()
+    except Exception as e:
+        print(f"[Scan] Warning: failed to ensure directories: {e}")
+    
+    print(f"[Scan] strategy={strategy_name} symbols={len(symbols)} interval={interval} range={from_date}..{to_date}")
+    
+    # Collect all setup days across all symbols
+    all_setups = []
+    for symbol in symbols:
+        print(f"[Scan] Processing {symbol}...")
         try:
-            from data_manager.config import ensure_directories
-            ensure_directories()
+            setup_df = scanner.get_setup_days(
+                symbol=symbol,
+                from_date=from_date,
+                to_date=to_date,
+                interval=interval,
+                volume_threshold=volume_threshold,
+                return_details=True
+            )
+            if not setup_df.empty:
+                all_setups.append(setup_df)
+                print(f"[Scan] Found {len(setup_df)} setup(s) for {symbol}")
+            else:
+                print(f"[Scan] No setups found for {symbol}")
         except Exception as e:
-            print(f"[Scan] Warning: failed to ensure directories: {e}")
-        from strategies.strat80_20.scanner_long import get_setup_days  # lazy import
-        print(f"[Scan] strategy={strategy} symbols={len(symbols)} interval={interval} range={from_date}..{to_date}")
-        
-        # Collect all setup days across all symbols
-        all_setups = []
-        for symbol in symbols:
-            print(f"[Scan] Processing {symbol}...")
-            try:
-                setup_df = get_setup_days(
-                    symbol=symbol,
-                    from_date=from_date,
-                    to_date=to_date,
-                    interval=interval,
-                    volume_threshold=volume_threshold,
-                    return_details=True
-                )
-                if not setup_df.empty:
-                    all_setups.append(setup_df)
-                    print(f"[Scan] Found {len(setup_df)} setup(s) for {symbol}")
-                else:
-                    print(f"[Scan] No setups found for {symbol}")
-            except Exception as e:
-                print(f"[Scan] Error processing {symbol}: {e}")
-        
-        # Combine all results
-        if all_setups:
-            import pandas as pd
-            df = pd.concat(all_setups, ignore_index=True)
-            # Sort by volume if requested
-            if sort_by_volume:
-                df = df.sort_values('volume', ascending=False)
-            print(f"\n[Scan] Total setups found: {len(df)}")
-            if not df.empty:
-                print(df[['symbol', 'setup_date', 'entry_date', 'entry_price', 'trigger_price', 'volume']].to_string(index=False))
-        else:
-            df = pd.DataFrame(columns=['symbol','setup_date','entry_date','entry_price','trigger_price','tick_size','true_range','volume','open_pos','close_pos'])
-            print("\n[Scan] No setups found across all symbols.")
-        
-        # Persist to JSON for downstream (e.g., live)
-        try:
-            df.to_json(output_file, orient="records", date_format="iso")
-            print(f"[Scan] Wrote {len(df)} setups to {output_file}")
-        except Exception as e:
-            print(f"[Scan] Failed to write JSON to {output_file}: {e}")
-            sys.exit(1)
+            print(f"[Scan] Error processing {symbol}: {e}")
+    
+    # Combine all results
+    if all_setups:
+        import pandas as pd
+        df = pd.concat(all_setups, ignore_index=True)
+        # Sort by volume if requested and available
+        if sort_by_volume and 'volume' in df.columns:
+            df = df.sort_values('volume', ascending=False)
+        print(f"\n[Scan] Total setups found: {len(df)}")
+        if not df.empty:
+            print(df[['symbol', 'setup_date', 'entry_date', 'entry_price', 'trigger_price']].to_string(index=False))
     else:
-        print(f"Scan mode not implemented for strategy '{strategy}' yet.")
+        import pandas as pd
+        df = pd.DataFrame(columns=['symbol','setup_date','entry_date','entry_price','trigger_price','tick_size','true_range'])
+        print("\n[Scan] No setups found across all symbols.")
+    
+    # Persist to JSON for downstream (e.g., live)
+    try:
+        df.to_json(output_file, orient="records", date_format="iso")
+        print(f"[Scan] Wrote {len(df)} setups to {output_file}")
+    except Exception as e:
+        print(f"[Scan] Failed to write JSON to {output_file}: {e}")
         sys.exit(1)
 
 

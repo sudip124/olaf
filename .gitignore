@@ -48,3 +48,4 @@ tmp/
 # backtest results, heatmaps, etc. if not already in logs/
 strategies/strat80_20/REFACTORING_NOTES.md
 strategies/strat80_20/new.py
+strategies/README.md

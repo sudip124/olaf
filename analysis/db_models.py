@@ -56,6 +56,11 @@ class BacktestJournal(Base):
     status = Column(String(10), index=True)  # win, lose, open
     exit_event = Column(String(50))  # Stop Loss Exit, Take Profit Exit, etc.
     
+    # Setup metrics (per symbol, duplicated across all trades for that symbol)
+    total_setups = Column(Integer)  # Total setups detected for this symbol
+    total_entries = Column(Integer)  # Total entries filled for this symbol
+    total_missed = Column(Integer)  # Total missed entries for this symbol
+    
     def __repr__(self):
         return f"<BacktestJournal(strategy={self.strategy_name}, symbol={self.symbol}, date={self.date}, pnl_r={self.pnl_r})>"
 

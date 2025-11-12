@@ -16,7 +16,9 @@ class SymbolState:
     def __init__(self, symbol, entry_price, trigger_price, tick_size, true_range,
                  market_open_hour, market_open_minute, market_close_hour, market_close_minute,
                  fixed_qty, product_type, take_profit_mult, initial_sl_ticks, 
-                 use_take_profit, trigger_window_minutes, max_attempts, max_order_retries):
+                 use_take_profit, trigger_window_minutes, max_attempts, max_order_retries,
+                 order_timeout_minutes=None, exit_before_close_minutes=None,
+                 ignore_initial_minutes: int = 1):
         self.symbol = symbol
         self.entry_price = entry_price
         self.trigger_price = trigger_price
@@ -36,6 +38,9 @@ class SymbolState:
         self.trigger_window_minutes = trigger_window_minutes
         self.max_attempts = max_attempts
         self.max_order_retries = max_order_retries
+        # New optional controls (fallback to sensible defaults if None)
+        self.exit_before_close_minutes = int(exit_before_close_minutes) if exit_before_close_minutes is not None else 45
+        self.ignore_initial_minutes = int(ignore_initial_minutes) if ignore_initial_minutes is not None else 1
         
         # State variables
         self.triggered = False
@@ -55,10 +60,48 @@ class SymbolState:
         self.last_rejection_time = None  # When the order was last rejected
         self.pending_retry = False  # Flag to indicate order needs retry when market opens
         self.retry_count = 0  # Track number of retry attempts for current trigger
+        self.order_placed_time = None  # When the current order was placed
+        # Default to 15 if not provided
+        self.order_timeout_minutes = int(order_timeout_minutes) if order_timeout_minutes is not None else 15  # minutes
+        # Broker-held protective Sell Stop order id
+        self.sl_order_id = None
+        # Track processed order update ids to avoid duplicate handling
+        self.processed_order_ids = set()
+        self.last_filled_entry_order_id = None
+        # Cache for SL order status to reduce API calls
+        self.sl_order_last_check_time = None
+        self.sl_order_cached_status = None
 
     def process_tick(self, ts, ltp):
+        # Ignore all ticks for the first N minutes after market open (configurable)
+        session_open_dt = timezone.localize(
+            datetime.datetime(ts.year, ts.month, ts.day, self.market_open_hour, self.market_open_minute, 0)
+        )
+        if ts < session_open_dt + datetime.timedelta(minutes=self.ignore_initial_minutes):
+            return
+
         # Update day_low
         self.day_low = min(self.day_low, ltp)
+        
+        # Check if we need to cancel stale orders
+        if self.entry_order_id is not None and self.order_placed_time is not None:
+            time_since_order = (ts - self.order_placed_time).total_seconds() / 60
+            if time_since_order > self.order_timeout_minutes:
+                logger.info(f"[{self.symbol}] Canceling stale order {self.entry_order_id} (placed {time_since_order:.1f} min ago)")
+                cancelled = self.cancel_order(self.entry_order_id, ts)
+                if cancelled:
+                    self.entry_order_id = None
+                    self.order_placed_time = None
+                else:
+                    log_event({
+                        'timestamp': ts.isoformat(),
+                        'date': ts.date().isoformat(),
+                        'time': ts.strftime('%H:%M:%S'),
+                        'event': 'Order Cancel Failed',
+                        'symbol': self.symbol,
+                        'price': 0,
+                        'details': f"Cancel failed for order {self.entry_order_id}; will keep state and retry on next cycle"
+                    })
 
         # Determine 15m bar start
         bar_start = ts.floor('15min')
@@ -84,11 +127,15 @@ class SymbolState:
                 else:
                     self.bar_df = pd.concat([self.bar_df, new_bar])
 
-                # Update trailing SL if in position and green bar
-                if self.in_position and self.stop_loss is not None and bar_close >= bar_open:
+                # Trailing stoploss logic: Update on green bars (price moving up)
+                # This implements the OpenAlgo trailing pattern by modifying the broker-held SELL STOP order
+                if self.in_position and self.stop_loss is not None and bar_open <= bar_close:
+                    # Calculate new stoploss just below the bar low
                     new_sl = bar_low - 1e-8
                     # Round new trailing SL to nearest tick before comparison and assignment
                     new_sl = round(new_sl / self.tick_size) * self.tick_size
+                    
+                    # Only trail upward (never move stoploss down)
                     if new_sl > self.stop_loss:
                         old_sl = self.stop_loss
                         self.stop_loss = new_sl
@@ -100,8 +147,11 @@ class SymbolState:
                             'event': 'Trailing SL Update',
                             'symbol': self.symbol,
                             'price': new_sl,
-                            'details': f"Updated SL from {old_sl} to {new_sl} on green bar (bar_low: {bar_low})"
+                            'details': f"Updated SL from {old_sl} to {new_sl} on green bar (bar_open: {bar_open}, bar_close: {bar_close}, bar_low: {bar_low})"
                         })
+                        # Modify the broker-held SELL STOP order to the new trailing stoploss
+                        # This is the key step: we update the broker's order so it executes at the new price
+                        self.place_or_update_sell_stop(self.stop_loss, self.current_bar_start)
 
             # Reset for new bar
             self.current_bar_ticks = []
@@ -146,6 +196,7 @@ class SymbolState:
         # Re-arm logic: after exit, if already triggered and not in position, and no pending order,
         # place a fresh buy stop when price is below entry_price and entries_today < max_attempts
         # Also retry if order was rejected and market is now open
+        # CRITICAL: Only place order if NOT already in position (prevents duplicate entries)
         if self.triggered and not self.in_position and self.entry_order_id is None:
             can_retry = (self.max_attempts is None) or (self.entries_today < self.max_attempts)
             # Allow retry if:
@@ -154,12 +205,37 @@ class SymbolState:
             should_retry = can_retry and (ltp <= self.entry_price or self.pending_retry)
             if should_retry and is_market_open(ts, self.market_open_hour, self.market_open_minute,
                                                self.market_close_hour, self.market_close_minute):
-                self.place_buy_stop(ts)
-                self.pending_retry = False  # Clear the retry flag after attempting
+                # Double-check we're not in position before placing order
+                if not self.in_position:
+                    self.place_buy_stop(ts)
+                    self.pending_retry = False  # Clear the retry flag after attempting
 
-        # Monitor for exits (even without full bar)
+        # Auto-exit before market close based on configured minutes
+        market_close_dt = ts.replace(hour=self.market_close_hour, minute=self.market_close_minute, second=0, microsecond=0)
+        exit_cutoff_dt = market_close_dt - datetime.timedelta(minutes=self.exit_before_close_minutes)
+        if self.in_position and ts >= exit_cutoff_dt:
+            log_event({
+                'timestamp': ts.isoformat(),
+                'date': ts.date().isoformat(),
+                'time': ts.time().isoformat(),
+                'event': 'Auto Exit - Market Close',
+                'symbol': self.symbol,
+                'price': ltp,
+                'details': f"Exiting position {self.exit_before_close_minutes} min before market close (cutoff: {exit_cutoff_dt.time().isoformat(timespec='seconds')})"
+            })
+            # Cancel protective SL if present to avoid duplicate exits
+            if self.sl_order_id:
+                cancelled = self.cancel_order(self.sl_order_id, ts)
+                if cancelled:
+                    self.sl_order_id = None
+            self.place_sell_market()
+            self.reset_after_exit()
+            return  # Skip further processing this tick
+
+        # Monitor for exits - broker-held SELL STOP will handle stoploss automatically
+        # We only keep emergency checks here
         if self.in_position:
-            # Defensive check: ensure stop_loss is set
+            # Defensive check: ensure stop_loss is set and broker SL order exists
             if self.stop_loss is None:
                 logger.error(f"[{self.symbol}] In position but stop_loss is None! Setting emergency SL.")
                 self.stop_loss = self.long_entry_price - (self.initial_sl_ticks * self.tick_size) if self.long_entry_price else self.day_low - 1e-8
@@ -173,42 +249,37 @@ class SymbolState:
                     'price': self.stop_loss,
                     'details': f"Stop loss was None, setting emergency SL: {self.stop_loss}"
                 })
+                # Place the missing broker SL order
+                self.place_or_update_sell_stop(self.stop_loss, ts)
             
-            if ltp <= self.stop_loss:
-                can_retry = (self.max_attempts is None) or (self.entries_today < self.max_attempts)
+            # Emergency failsafe: if broker-held SL order is missing, place it
+            elif not self.sl_order_id:
+                logger.warning(f"[{self.symbol}] In position but no broker SL order! Placing emergency SL.")
                 log_event({
                     'timestamp': ts.isoformat(),
                     'date': ts.date().isoformat(),
                     'time': ts.time().isoformat(),
-                    'event': 'Stop Loss Exit',
+                    'event': 'Emergency SL Order Placed',
                     'symbol': self.symbol,
-                    'price': ltp,
-                    'details': f"Hit SL at {self.stop_loss}. Entries today: {self.entries_today}/{self.max_attempts if self.max_attempts else 'unlimited'}. Can retry: {can_retry}"
+                    'price': self.stop_loss,
+                    'details': f"Broker SL order missing, placing at {self.stop_loss}"
                 })
-                self.place_sell_market()
-                self.reset_after_exit()  # Reset states after exit
-            elif self.use_take_profit and self.take_profit is not None and ltp >= self.take_profit:
-                can_retry = (self.max_attempts is None) or (self.entries_today < self.max_attempts)
-                log_event({
-                    'timestamp': ts.isoformat(),
-                    'date': ts.date().isoformat(),
-                    'time': ts.time().isoformat(),
-                    'event': 'Take Profit Exit',
-                    'symbol': self.symbol,
-                    'price': ltp,
-                    'details': f"Hit TP at {self.take_profit}. Entries today: {self.entries_today}/{self.max_attempts if self.max_attempts else 'unlimited'}. Can retry: {can_retry}"
-                })
-                self.place_sell_market()
-                self.reset_after_exit()  # Reset states after exit
+                self.place_or_update_sell_stop(self.stop_loss, ts)
+
 
     def place_buy_stop(self, ts=None):
-        """Place a buy stop order. Checks market hours before placing.
+        """Place a buy stop order. Checks market hours and position before placing.
         
         Args:
             ts: Current timestamp (timezone aware). If None, uses current time.
         """
         if ts is None:
             ts = datetime.datetime.now(timezone)
+        
+        # CRITICAL: Check if already in position to prevent duplicate orders
+        if self.in_position:
+            logger.warning(f"[{self.symbol}] Skipping buy stop order: already in position")
+            return
         
         # Check if market is open
         if not is_market_open(ts, self.market_open_hour, self.market_open_minute, 
@@ -226,16 +297,18 @@ class SymbolState:
             return
         
         try:
+            # Use SL (Stop-Limit) order type with both price and trigger_price
+            # This is the proper way to place a BUY STOP order per OpenAlgo docs
             response = client.placeorder(
                 strategy=STRATEGY_NAME,
                 exchange=EXCHANGE,
                 symbol=self.symbol,
                 action='BUY',
                 product=self.product_type,
-                price_type='SL-M',
+                price_type='SL',
                 quantity=self.fixed_qty,
-                price=0,
-                trigger_price=self.entry_price
+                price=self.entry_price,  # Limit price (same as trigger for immediate execution)
+                trigger_price=self.entry_price  # Trigger price
             )
             
             # Check if order was rejected
@@ -275,6 +348,7 @@ class SymbolState:
                     response.get('order_id') or response.get('orderid') or
                     response.get('orderId') or response.get('data', {}).get('order_id')
                 )
+                self.order_placed_time = ts  # Track when order was placed
                 self.order_rejected = False
                 self.pending_retry = False
                 # Reset retry count on successful order placement
@@ -295,22 +369,7 @@ class SymbolState:
             self.last_rejection_time = ts
             self.entry_order_id = None
             self.retry_count += 1
-            
-            # Check if we've exceeded retry limit
-            if self.max_order_retries is not None and self.retry_count >= self.max_order_retries:
-                self.pending_retry = False
-                log_event({
-                    'timestamp': ts.isoformat(),
-                    'date': ts.date().isoformat(),
-                    'time': ts.time().isoformat(),
-                    'event': 'Order Failed - Max Retries Reached',
-                    'symbol': self.symbol,
-                    'price': self.entry_price,
-                    'details': f"Exception: {e}. Max retries ({self.max_order_retries}) reached. Giving up."
-                })
-            else:
-                self.pending_retry = True
-
+    
     def place_sell_market(self):
         if not self.in_position:  # Extra check to prevent selling when not in position
             logger.warning(f"[{self.symbol}] Skipping sell market: not in position")
@@ -366,10 +425,152 @@ class SymbolState:
         except Exception as e:
             logger.error(f"[{self.symbol}] Error placing buy market to square off: {e}")
 
+    def place_or_update_sell_stop(self, new_stop, ts=None):
+        """Place or modify a SELL STOP order for protective stoploss.
+        
+        This method implements the trailing stoploss pattern from OpenAlgo:
+        1. If sl_order_id exists and is open, modify it to new_stop price
+        2. If sl_order_id doesn't exist or is not open, place a new SELL STOP order
+        
+        Args:
+            new_stop: New stoploss price (will be rounded to tick_size)
+            ts: Current timestamp (timezone aware). If None, uses current time.
+        """
+        if ts is None:
+            ts = datetime.datetime.now(timezone)
+        
+        # Safety checks
+        if not self.in_position:
+            logger.warning(f"[{self.symbol}] Cannot place/update SL: not in position")
+            return
+        if new_stop is None:
+            logger.warning(f"[{self.symbol}] Cannot place/update SL: new_stop is None")
+            return
+        
+        # Round to tick size
+        new_stop = round(float(new_stop) / self.tick_size) * self.tick_size
+        
+        try:
+            # If we have an existing SL order, try to modify it
+            if self.sl_order_id:
+                try:
+                    # Check if the order is still open/pending
+                    status_resp = client.orderstatus(order_id=self.sl_order_id, strategy=STRATEGY_NAME)
+                    data = status_resp.get('data') if isinstance(status_resp, dict) else None
+                    cur_status = (data or status_resp).get('order_status') if isinstance((data or status_resp), dict) else None
+                    
+                    # Check if order is in a modifiable state
+                    is_open = str(cur_status).strip().lower() in (
+                        'open', 'trigger pending', 'pending', 'validation pending', 
+                        'put order req received', 'trigger_pending'
+                    ) if cur_status else False
+                    
+                    if is_open:
+                        # Modify existing SELL STOP order
+                        logger.info(f"[{self.symbol}] Modifying SELL STOP order {self.sl_order_id} to {new_stop}")
+                        resp = client.modifyorder(
+                            order_id=self.sl_order_id,
+                            strategy=STRATEGY_NAME,
+                            symbol=self.symbol,
+                            exchange=EXCHANGE,
+                            action='SELL',
+                            product=self.product_type,
+                            price_type='SL',
+                            quantity=self.fixed_qty,
+                            price=new_stop,
+                            trigger_price=new_stop
+                        )
+                        
+                        # Check if modify was successful
+                        if resp.get('status') == 'success' or 'success' in str(resp).lower():
+                            log_event({
+                                'timestamp': ts.isoformat(),
+                                'date': ts.date().isoformat(),
+                                'time': ts.time().isoformat(),
+                                'event': 'Protective SL Modified',
+                                'symbol': self.symbol,
+                                'price': new_stop,
+                                'details': f"Modified order {self.sl_order_id} to trigger={new_stop}; response={resp}"
+                            })
+                            return  # Successfully modified, we're done
+                        else:
+                            logger.warning(f"[{self.symbol}] Modify order failed: {resp}. Will place new order.")
+                            self.sl_order_id = None  # Clear and place new order
+                    else:
+                        logger.info(f"[{self.symbol}] SL order {self.sl_order_id} not open (status: {cur_status}). Placing new order.")
+                        self.sl_order_id = None  # Clear and place new order
+                        
+                except Exception as e:
+                    logger.warning(f"[{self.symbol}] Error checking/modifying SL order: {e}. Will place new order.")
+                    self.sl_order_id = None  # Clear and place new order
+            
+            # Place new SELL STOP order (either no existing order, or modify failed)
+            logger.info(f"[{self.symbol}] Placing new SELL STOP order at {new_stop}")
+            resp = client.placeorder(
+                strategy=STRATEGY_NAME,
+                exchange=EXCHANGE,
+                symbol=self.symbol,
+                action='SELL',
+                product=self.product_type,
+                price_type='SL',
+                quantity=self.fixed_qty,
+                price=new_stop,
+                trigger_price=new_stop
+            )
+            
+            # Extract order ID from response
+            self.sl_order_id = (
+                resp.get('order_id') or resp.get('orderid') or 
+                resp.get('orderId') or resp.get('data', {}).get('order_id')
+            )
+            
+            if self.sl_order_id:
+                log_event({
+                    'timestamp': ts.isoformat(),
+                    'date': ts.date().isoformat(),
+                    'time': ts.time().isoformat(),
+                    'event': 'Protective SL Placed',
+                    'symbol': self.symbol,
+                    'price': new_stop,
+                    'details': f"Placed SELL STOP order {self.sl_order_id} at trigger={new_stop}; response={resp}"
+                })
+            else:
+                logger.error(f"[{self.symbol}] Failed to extract order_id from response: {resp}")
+                
+        except Exception as e:
+            logger.error(f"[{self.symbol}] Error placing/updating Sell Stop: {e}")
+            log_event({
+                'timestamp': ts.isoformat(),
+                'date': ts.date().isoformat(),
+                'time': ts.time().isoformat(),
+                'event': 'Protective SL Error',
+                'symbol': self.symbol,
+                'price': new_stop,
+                'details': f"Exception: {e}"
+            })
+
     # Callback for order updates (if filled)
     def on_order_update(self, update):
-        if update['order_id'] == self.entry_order_id and update['status'] == 'filled':
-            fill_price = float(update['fill_price'])  # Ensure it's a float
+        order_id = update.get('order_id') or update.get('orderId') or update.get('orderid')
+        status = update.get('status') or update.get('order_status') or update.get('orderStatus')
+        # Debounce duplicate updates
+        if order_id in getattr(self, 'processed_order_ids', set()):
+            return
+        
+        if order_id == self.entry_order_id and status == 'filled':
+            # Check if we already processed this fill (prevents race conditions)
+            if self.last_filled_entry_order_id == order_id:
+                self.processed_order_ids.add(order_id)
+                return
+            
+            # Extract fill price with fallbacks for different broker response formats
+            fill_price = (update.get('fill_price') or update.get('average_price') or 
+                         update.get('avgprice') or update.get('averagePrice'))
+            if not fill_price:
+                logger.error(f"[{self.symbol}] No fill_price in order update: {update}")
+                return
+            fill_price = float(fill_price)
+            
             self.in_position = True
             self.long_entry_price = fill_price
             # New SL calculation: entry_price - (initial_sl_ticks * tick_size)
@@ -382,8 +583,12 @@ class SymbolState:
             self.take_profit = fill_price + self.take_profit_mult * risk if self.use_take_profit else None
             if self.take_profit is not None:
                 self.take_profit = round(self.take_profit / self.tick_size) * self.tick_size
-            # Count this entry
-            self.entries_today += 1
+            # Count this entry only once per unique filled order id
+            if self.last_filled_entry_order_id != order_id:
+                self.entries_today += 1
+                self.last_filled_entry_order_id = order_id
+            # Clear any pending retry since entry succeeded
+            self.pending_retry = False
             
             # Log with detailed info
             logger.info(f"[{self.symbol}] Entry filled at {fill_price}, initial_sl_ticks={self.initial_sl_ticks}, risk={risk}, SL={self.stop_loss}, TP={self.take_profit}")
@@ -397,7 +602,112 @@ class SymbolState:
                 'price': fill_price,
                 'details': f"Long entry #{self.entries_today}; SL: {self.stop_loss} (entry - {self.initial_sl_ticks} ticks); TP: {self.take_profit} (use_take_profit: {self.use_take_profit}); risk: {risk}; entries_today={self.entries_today}/{self.max_attempts if self.max_attempts is not None else 'unlimited'}"
             })
+            # Place initial broker-held protective Sell Stop
+            self.place_or_update_sell_stop(self.stop_loss, now)
+            # Mark this order update as processed to avoid duplicate handling
+            self.processed_order_ids.add(order_id)
+        # If broker-held SL fills, clear state and exit
+        elif self.sl_order_id and order_id == self.sl_order_id and status in ('filled', 'complete'):
+            ts_now = datetime.datetime.now(timezone)
+            log_event({
+                'timestamp': ts_now.isoformat(),
+                'date': ts_now.date().isoformat(),
+                'time': ts_now.time().isoformat(),
+                'event': 'Stop Loss Filled',
+                'symbol': self.symbol,
+                'price': update.get('fill_price') or 0,
+                'details': f"Broker-held Sell Stop filled; order_id={self.sl_order_id}"
+            })
+            self.sl_order_id = None
+            self.processed_order_ids.add(order_id)
+            self.reset_after_exit()
 
+    def cancel_order(self, order_id, ts=None):
+        """Cancel a pending order. Returns True on success, False on failure.
+        First verifies broker reports the order is still open before canceling."""
+        if ts is None:
+            ts = datetime.datetime.now(timezone)
+        # Verify order status before cancel to avoid broker 400/500
+        is_open = None
+        status_str = None
+        try:
+            order_status = client.orderstatus(order_id=order_id, strategy=STRATEGY_NAME)
+            if isinstance(order_status, dict):
+                # Common schemas: {'data': {'order_status': 'OPEN'}} or {'order_status': 'OPEN'}
+                data = order_status.get('data') if isinstance(order_status.get('data'), dict) else order_status
+                status_str = (data or {}).get('order_status') or (data or {}).get('status')
+            if status_str:
+                status_norm = str(status_str).strip().lower()
+                # Consider typical open-like states that are cancelable
+                is_open = status_norm in ('open', 'put order req received', 'validation pending', 'trigger pending', 'pending')
+        except Exception as e:
+            logger.warning(f"[{self.symbol}] orderstatus check failed for {order_id}: {e}")
+            # If status check fails, proceed to attempt cancel as best-effort
+            is_open = None
+
+        if is_open is False:
+            log_event({
+                'timestamp': ts.isoformat(),
+                'date': ts.date().isoformat(),
+                'time': ts.strftime('%H:%M:%S'),
+                'event': 'Order Cancel Skipped',
+                'symbol': self.symbol,
+                'price': 0,
+                'details': f"Order {order_id} not open (status: {status_str}); skipping cancel"
+            })
+            return False
+
+        try:
+            response = client.cancelorder(
+                order_id=order_id,
+                strategy=STRATEGY_NAME
+            )
+            # Determine success from broker response
+            status = None
+            message = None
+            if isinstance(response, dict):
+                status = response.get('status') or response.get('Status')
+                message = response.get('message') or response.get('Message')
+            else:
+                message = str(response)
+
+            success = (str(status).lower() == 'success') if status is not None else ('success' in str(response).lower())
+
+            if success:
+                log_event({
+                    'timestamp': ts.isoformat(),
+                    'date': ts.date().isoformat(),
+                    'time': ts.strftime('%H:%M:%S'),
+                    'event': 'Order Cancelled',
+                    'symbol': self.symbol,
+                    'price': 0,
+                    'details': f"Cancelled order {order_id}. Response: {response}"
+                })
+                return True
+            else:
+                log_event({
+                    'timestamp': ts.isoformat(),
+                    'date': ts.date().isoformat(),
+                    'time': ts.strftime('%H:%M:%S'),
+                    'event': 'Order Cancel Failed',
+                    'symbol': self.symbol,
+                    'price': 0,
+                    'details': f"Failed to cancel order {order_id}. Response: {response}"
+                })
+                return False
+        except Exception as e:
+            logger.error(f"[{self.symbol}] Error canceling order {order_id}: {e}")
+            log_event({
+                'timestamp': ts.isoformat(),
+                'date': ts.date().isoformat(),
+                'time': ts.strftime('%H:%M:%S'),
+                'event': 'Order Cancel Failed',
+                'symbol': self.symbol,
+                'price': 0,
+                'details': f"Exception canceling order {order_id}: {e}"
+            })
+            return False
+    
     def reset_after_exit(self):
         self.in_position = False
         self.long_entry_price = None
@@ -406,6 +716,11 @@ class SymbolState:
         self.order_rejected = False
         self.pending_retry = False
         self.retry_count = 0  # Reset retry count after exit
-        self.trigger_time = None  # Reset trigger so re-entry requires trigger hit again
-        # Keep triggered=True to allow checking for re-entry conditions
+        self.trigger_time = None  # Reset trigger time
+        self.triggered = False  # Reset triggered flag - re-entry requires NEW trigger hit (matches backtest)
+        self.order_placed_time = None  # Reset order timestamp
+        self.sl_order_id = None  # Clear SL order id
+        self.last_filled_entry_order_id = None
+        # Keep processed_order_ids bounded; clear on full reset to avoid growth
+        self.processed_order_ids.clear()
         # Re-entry limit enforced via entries_today/max_attempts

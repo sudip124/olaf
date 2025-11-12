@@ -107,6 +107,7 @@ def generate_signals(
     entry_tr = 0.0
     stop_loss = 0.0
     take_profit = 0.0
+    entry_bar_idx = -1
 
     # Per-day state variables
     potential_entry = False
@@ -222,6 +223,7 @@ def generate_signals(
                         take_profit = long_entry_price + take_profit_mult * risk
                         take_profit = round(take_profit / tick) * tick
                         entries_today += 1  # Increment entry counter
+                        entry_bar_idx = i
 
                         if log:
                             signals_log.append({
@@ -258,6 +260,7 @@ def generate_signals(
                 order_price.iloc[i] = exit_price
                 in_long = False
                 trigger_time = None  # Reset trigger so re-entry requires trigger hit again
+                entry_bar_idx = -1
 
                 if log:
                     can_retry = (max_attempts is None) or (entries_today < max_attempts)
@@ -282,6 +285,7 @@ def generate_signals(
                 order_price.iloc[i] = exit_price
                 in_long = False
                 trigger_time = None  # Reset trigger so re-entry requires trigger hit again
+                entry_bar_idx = -1
 
                 if log:
                     can_retry = (max_attempts is None) or (entries_today < max_attempts)
@@ -296,7 +300,7 @@ def generate_signals(
                     })
                 continue
             # Update trailing stop loss if the current bar is green (close >= open)
-            if df['open'].iloc[i] <= df['close'].iloc[i]:
+            if (i > entry_bar_idx) and (df['open'].iloc[i] <= df['close'].iloc[i]):
                 new_sl = df['low'].iloc[i] - 1e-8
                 # Round new trailing SL to nearest tick before comparison and assignment
                 new_sl = round(new_sl / tick) * tick

@@ -111,7 +111,10 @@ class AnalysisService:
                     pnl_r=float(row['pnl_r']) if pd.notna(row.get('pnl_r')) else None,
                     pnl_absolute=float(row['pnl_absolute']) if pd.notna(row.get('pnl_absolute')) else None,
                     status=row.get('status', 'open'),
-                    exit_event=row.get('exit_event')
+                    exit_event=row.get('exit_event'),
+                    total_setups=int(row.get('total_setups', 0)),
+                    total_entries=int(row.get('total_entries', 0)),
+                    total_missed=int(row.get('total_missed', 0))
                 )
                 session.add(journal_entry)
                 count += 1
@@ -167,6 +170,9 @@ class AnalysisService:
                 'status': j.status,
                 'entry_price': j.entry_price,
                 'exit_price': j.exit_price,
+                'total_setups': j.total_setups,
+                'total_entries': j.total_entries,
+                'total_missed': j.total_missed,
             } for j in journals])
             
             # Calculate KPIs per symbol

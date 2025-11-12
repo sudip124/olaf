@@ -1,1 +1,1082 @@
-[{"symbol":"IDEA","setup_date":"2025-10-28T00:00:00.000","entry_date":"2025-10-29T00:00:00.000","entry_price":9.38,"trigger_price":8.88,"tick_size":0.05,"true_range":0.77,"volume":4370806935,"open_pos":0.9351,"close_pos":0.0779},{"symbol":"ADANIPOWER","setup_date":"2025-10-27T00:00:00.000","entry_date":"2025-10-28T00:00:00.000","entry_price":162.0,"trigger_price":161.5,"tick_size":0.05,"true_range":7.77,"volume":206471132,"open_pos":0.8366,"close_pos":0.1236},{"symbol":"SUZLON","setup_date":"2025-10-27T00:00:00.000","entry_date":"2025-10-28T00:00:00.000","entry_price":53.63,"trigger_price":53.13,"tick_size":0.05,"true_range":0.53,"volume":98878876,"open_pos":0.8868,"close_pos":0.1509},{"symbol":"ADANIPOWER","setup_date":"2025-10-31T00:00:00.000","entry_date":"2025-11-01T00:00:00.000","entry_price":157.5,"trigger_price":157.0,"tick_size":0.05,"true_range":5.07,"volume":89417492,"open_pos":0.8087,"close_pos":0.069},{"symbol":"BEL","setup_date":"2025-10-27T00:00:00.000","entry_date":"2025-10-28T00:00:00.000","entry_price":414.6,"trigger_price":414.1,"tick_size":0.05,"true_range":10.4,"volume":72949944,"open_pos":1.0,"close_pos":0.0529},{"symbol":"BEL","setup_date":"2025-10-29T00:00:00.000","entry_date":"2025-10-30T00:00:00.000","entry_price":406.85,"trigger_price":406.35,"tick_size":0.05,"true_range":8.05,"volume":43496199,"open_pos":0.8323,"close_pos":0.0435},{"symbol":"POWERGRID","setup_date":"2025-10-30T00:00:00.000","entry_date":"2025-10-31T00:00:00.000","entry_price":290.95,"trigger_price":290.45,"tick_size":0.05,"true_range":5.5,"volume":30965710,"open_pos":0.9727,"close_pos":0.1},{"symbol":"RECLTD","setup_date":"2025-10-30T00:00:00.000","entry_date":"2025-10-31T00:00:00.000","entry_price":377.2,"trigger_price":376.7,"tick_size":0.05,"true_range":10.3,"volume":28301835,"open_pos":1.0,"close_pos":0.1068},{"symbol":"VEDL","setup_date":"2025-10-31T00:00:00.000","entry_date":"2025-11-01T00:00:00.000","entry_price":491.2,"trigger_price":490.7,"tick_size":0.05,"true_range":16.2,"volume":26470394,"open_pos":0.9722,"close_pos":0.1451},{"symbol":"IRFC","setup_date":"2025-10-28T00:00:00.000","entry_date":"2025-10-29T00:00:00.000","entry_price":122.6,"trigger_price":122.1,"tick_size":0.05,"true_range":1.45,"volume":16846887,"open_pos":0.8276,"close_pos":0.1172},{"symbol":"HINDZINC","setup_date":"2025-10-27T00:00:00.000","entry_date":"2025-10-28T00:00:00.000","entry_price":481.8,"trigger_price":481.3,"tick_size":0.05,"true_range":7.8,"volume":11301336,"open_pos":0.9231,"close_pos":0.0641},{"symbol":"GODREJCP","setup_date":"2025-10-29T00:00:00.000","entry_date":"2025-10-30T00:00:00.000","entry_price":1105.0,"trigger_price":1104.5,"tick_size":0.05,"true_range":18.6,"volume":7607724,"open_pos":0.8065,"close_pos":0.0968},{"symbol":"TVSMOTOR","setup_date":"2025-10-29T00:00:00.000","entry_date":"2025-10-30T00:00:00.000","entry_price":3490.0,"trigger_price":3489.5,"tick_size":0.05,"true_range":123.8,"volume":6865857,"open_pos":0.8885,"close_pos":0.0719},{"symbol":"AMBUJACEM","setup_date":"2025-10-28T00:00:00.000","entry_date":"2025-10-29T00:00:00.000","entry_price":553.0,"trigger_price":552.5,"tick_size":0.05,"true_range":10.25,"volume":4461084,"open_pos":0.9756,"close_pos":0.1854},{"symbol":"HAL","setup_date":"2025-10-27T00:00:00.000","entry_date":"2025-10-28T00:00:00.000","entry_price":4747.8,"trigger_price":4747.3,"tick_size":0.05,"true_range":82.2,"volume":4433976,"open_pos":1.0,"close_pos":0.1095},{"symbol":"SBICARD","setup_date":"2025-10-30T00:00:00.000","entry_date":"2025-10-31T00:00:00.000","entry_price":883.1,"trigger_price":882.6,"tick_size":0.05,"true_range":31.9,"volume":3968873,"open_pos":0.906,"close_pos":0.0831},{"symbol":"PIDILITIND","setup_date":"2025-10-31T00:00:00.000","entry_date":"2025-11-01T00:00:00.000","entry_price":1440.0,"trigger_price":1439.5,"tick_size":0.05,"true_range":51.9,"volume":3441270,"open_pos":1.0,"close_pos":0.0886},{"symbol":"HAL","setup_date":"2025-10-29T00:00:00.000","entry_date":"2025-10-30T00:00:00.000","entry_price":4685.0,"trigger_price":4684.5,"tick_size":0.05,"true_range":60.0,"volume":2748684,"open_pos":0.8817,"close_pos":0.1683},{"symbol":"MPHASIS","setup_date":"2025-10-31T00:00:00.000","entry_date":"2025-11-01T00:00:00.000","entry_price":2752.0,"trigger_price":2751.5,"tick_size":0.05,"true_range":209.2,"volume":2693334,"open_pos":0.9465,"close_pos":0.0593},{"symbol":"PIDILITIND","setup_date":"2025-10-30T00:00:00.000","entry_date":"2025-10-31T00:00:00.000","entry_price":1480.5,"trigger_price":1480.0,"tick_size":0.05,"true_range":31.5,"volume":2439032,"open_pos":0.9333,"close_pos":0.1873},{"symbol":"ICICIPRULI","setup_date":"2025-10-31T00:00:00.000","entry_date":"2025-11-01T00:00:00.000","entry_price":589.15,"trigger_price":588.65,"tick_size":0.05,"true_range":15.05,"volume":1862738,"open_pos":0.9535,"close_pos":0.1329},{"symbol":"DMART","setup_date":"2025-10-30T00:00:00.000","entry_date":"2025-10-31T00:00:00.000","entry_price":4149.9,"trigger_price":4149.4,"tick_size":0.05,"true_range":98.1,"volume":1334364,"open_pos":1.0,"close_pos":0.1142},{"symbol":"OBEROIRLTY","setup_date":"2025-10-28T00:00:00.000","entry_date":"2025-10-29T00:00:00.000","entry_price":1703.1,"trigger_price":1702.6,"tick_size":0.05,"true_range":36.9,"volume":1284750,"open_pos":0.9187,"close_pos":0.1355},{"symbol":"ZYDUSLIFE","setup_date":"2025-10-28T00:00:00.000","entry_date":"2025-10-29T00:00:00.000","entry_price":997.35,"trigger_price":996.85,"tick_size":0.05,"true_range":19.8,"volume":1147110,"open_pos":0.9369,"close_pos":0.197},{"symbol":"DIVISLAB","setup_date":"2025-10-27T00:00:00.000","entry_date":"2025-10-28T00:00:00.000","entry_price":6468.5,"trigger_price":6468.0,"tick_size":0.05,"true_range":141.5,"volume":1026570,"open_pos":1.0,"close_pos":0.1519},{"symbol":"SRF","setup_date":"2025-10-31T00:00:00.000","entry_date":"2025-11-01T00:00:00.000","entry_price":2921.4,"trigger_price":2920.9,"tick_size":0.05,"true_range":70.6,"volume":928592,"open_pos":1.0,"close_pos":0.1289},{"symbol":"MPHASIS","setup_date":"2025-10-28T00:00:00.000","entry_date":"2025-10-29T00:00:00.000","entry_price":2820.0,"trigger_price":2819.5,"tick_size":0.05,"true_range":107.5,"volume":705699,"open_pos":0.9767,"close_pos":0.1014},{"symbol":"DIXON","setup_date":"2025-10-31T00:00:00.000","entry_date":"2025-11-01T00:00:00.000","entry_price":15463.0,"trigger_price":15462.5,"tick_size":0.05,"true_range":287.0,"volume":449558,"open_pos":0.8955,"close_pos":0.108},{"symbol":"ABB","setup_date":"2025-10-31T00:00:00.000","entry_date":"2025-11-01T00:00:00.000","entry_price":5204.5,"trigger_price":5204.0,"tick_size":0.05,"true_range":91.0,"volume":293714,"open_pos":0.8736,"close_pos":0.1703}]
+[
+    {
+        "symbol": "APLAPOLLO",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 1787.7,
+        "trigger_price": 1786.7,
+        "tick_size": 0.1,
+        "true_range": 13.3
+    },
+    {
+        "symbol": "AUBANK",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 886.6,
+        "trigger_price": 886.1,
+        "tick_size": 0.05,
+        "true_range": 30.3
+    },
+    {
+        "symbol": "ACE",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 1015.0,
+        "trigger_price": 1014.0,
+        "tick_size": 0.1,
+        "true_range": 39.5
+    },
+    {
+        "symbol": "ABCAPITAL",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 332.95,
+        "trigger_price": 332.45,
+        "tick_size": 0.05,
+        "true_range": 6.0
+    },
+    {
+        "symbol": "ABREL",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 1761.6,
+        "trigger_price": 1760.6,
+        "tick_size": 0.1,
+        "true_range": 48.8
+    },
+    {
+        "symbol": "ABSLAMC",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 751.0,
+        "trigger_price": 750.5,
+        "tick_size": 0.05,
+        "true_range": 17.25
+    },
+    {
+        "symbol": "ABSLAMC",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 731.1,
+        "trigger_price": 730.6,
+        "tick_size": 0.05,
+        "true_range": 23.95
+    },
+    {
+        "symbol": "AFCONS",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 413.4,
+        "trigger_price": 412.9,
+        "tick_size": 0.05,
+        "true_range": 23.7
+    },
+    {
+        "symbol": "AJANTPHARM",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 2511.0,
+        "trigger_price": 2510.0,
+        "tick_size": 0.1,
+        "true_range": 68.3
+    },
+    {
+        "symbol": "ANANTRAJ",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 611.8,
+        "trigger_price": 611.3,
+        "tick_size": 0.05,
+        "true_range": 17.7
+    },
+    {
+        "symbol": "APOLLOHOSP",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 7515.0,
+        "trigger_price": 7510.0,
+        "tick_size": 0.5,
+        "true_range": 137.5
+    },
+    {
+        "symbol": "AUROPHARMA",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 1120.0,
+        "trigger_price": 1119.0,
+        "tick_size": 0.1,
+        "true_range": 23.8
+    },
+    {
+        "symbol": "BSE",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 2617.4,
+        "trigger_price": 2616.4,
+        "tick_size": 0.1,
+        "true_range": 87.6
+    },
+    {
+        "symbol": "BAJAJHLDNG",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 12510.0,
+        "trigger_price": 12500.0,
+        "tick_size": 1.0,
+        "true_range": 490.0
+    },
+    {
+        "symbol": "BATAINDIA",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 1047.3,
+        "trigger_price": 1046.3,
+        "tick_size": 0.1,
+        "true_range": 18.8
+    },
+    {
+        "symbol": "BAYERCROP",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 4584.5,
+        "trigger_price": 4583.5,
+        "tick_size": 0.1,
+        "true_range": 163.9
+    },
+    {
+        "symbol": "BERGEPAINT",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 528.35,
+        "trigger_price": 527.85,
+        "tick_size": 0.05,
+        "true_range": 16.2
+    },
+    {
+        "symbol": "BHARTIARTL",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 1995.6,
+        "trigger_price": 1994.6,
+        "tick_size": 0.1,
+        "true_range": 52.4
+    },
+    {
+        "symbol": "CESC",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 172.0,
+        "trigger_price": 171.9,
+        "tick_size": 0.01,
+        "true_range": 3.95
+    },
+    {
+        "symbol": "CENTRALBK",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 37.58,
+        "trigger_price": 37.48,
+        "tick_size": 0.01,
+        "true_range": 1.39
+    },
+    {
+        "symbol": "CHAMBLFERT",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 467.45,
+        "trigger_price": 466.95,
+        "tick_size": 0.05,
+        "true_range": 15.0
+    },
+    {
+        "symbol": "CHOLAHLDNG",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 1870.0,
+        "trigger_price": 1869.0,
+        "tick_size": 0.1,
+        "true_range": 102.6
+    },
+    {
+        "symbol": "CLEAN",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 930.3,
+        "trigger_price": 929.3,
+        "tick_size": 0.1,
+        "true_range": 39.7
+    },
+    {
+        "symbol": "CLEAN",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 924.4,
+        "trigger_price": 923.4,
+        "tick_size": 0.1,
+        "true_range": 15.9
+    },
+    {
+        "symbol": "COHANCE",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 705.35,
+        "trigger_price": 704.85,
+        "tick_size": 0.05,
+        "true_range": 18.7
+    },
+    {
+        "symbol": "COHANCE",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 688.0,
+        "trigger_price": 687.5,
+        "tick_size": 0.05,
+        "true_range": 20.05
+    },
+    {
+        "symbol": "CONCOR",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 520.35,
+        "trigger_price": 519.85,
+        "tick_size": 0.05,
+        "true_range": 6.2
+    },
+    {
+        "symbol": "DOMS",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 2466.1,
+        "trigger_price": 2465.1,
+        "tick_size": 0.1,
+        "true_range": 57.9
+    },
+    {
+        "symbol": "DEEPAKNTR",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 1717.0,
+        "trigger_price": 1716.0,
+        "tick_size": 0.1,
+        "true_range": 22.4
+    },
+    {
+        "symbol": "DEVYANI",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 146.45,
+        "trigger_price": 146.35,
+        "tick_size": 0.01,
+        "true_range": 9.6
+    },
+    {
+        "symbol": "DIVISLAB",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 6601.5,
+        "trigger_price": 6596.5,
+        "tick_size": 0.5,
+        "true_range": 290.5
+    },
+    {
+        "symbol": "DIVISLAB",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 6489.0,
+        "trigger_price": 6484.0,
+        "tick_size": 0.5,
+        "true_range": 236.0
+    },
+    {
+        "symbol": "ELECON",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 522.05,
+        "trigger_price": 521.55,
+        "tick_size": 0.05,
+        "true_range": 18.35
+    },
+    {
+        "symbol": "EMAMILTD",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 512.55,
+        "trigger_price": 512.05,
+        "tick_size": 0.05,
+        "true_range": 12.0
+    },
+    {
+        "symbol": "ESCORTS",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 3541.0,
+        "trigger_price": 3540.0,
+        "tick_size": 0.1,
+        "true_range": 97.6
+    },
+    {
+        "symbol": "FSL",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 339.4,
+        "trigger_price": 338.9,
+        "tick_size": 0.05,
+        "true_range": 11.65
+    },
+    {
+        "symbol": "FIVESTAR",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 622.5,
+        "trigger_price": 622.0,
+        "tick_size": 0.05,
+        "true_range": 20.1
+    },
+    {
+        "symbol": "FORCEMOT",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 18000.0,
+        "trigger_price": 17990.0,
+        "tick_size": 1.0,
+        "true_range": 1100.0
+    },
+    {
+        "symbol": "GILLETTE",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 8458.5,
+        "trigger_price": 8453.5,
+        "tick_size": 0.5,
+        "true_range": 271.5
+    },
+    {
+        "symbol": "GLAND",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 1855.1,
+        "trigger_price": 1854.1,
+        "tick_size": 0.1,
+        "true_range": 42.4
+    },
+    {
+        "symbol": "GLAXO",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 2534.2,
+        "trigger_price": 2533.2,
+        "tick_size": 0.1,
+        "true_range": 56.4
+    },
+    {
+        "symbol": "GLAXO",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 2467.5,
+        "trigger_price": 2466.5,
+        "tick_size": 0.1,
+        "true_range": 83.2
+    },
+    {
+        "symbol": "MEDANTA",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 1245.8,
+        "trigger_price": 1244.8,
+        "tick_size": 0.1,
+        "true_range": 38.1
+    },
+    {
+        "symbol": "MEDANTA",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 1174.0,
+        "trigger_price": 1173.0,
+        "tick_size": 0.1,
+        "true_range": 77.8
+    },
+    {
+        "symbol": "GODREJAGRO",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 587.0,
+        "trigger_price": 586.5,
+        "tick_size": 0.05,
+        "true_range": 33.55
+    },
+    {
+        "symbol": "GODREJCP",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 1118.3,
+        "trigger_price": 1117.3,
+        "tick_size": 0.1,
+        "true_range": 21.1
+    },
+    {
+        "symbol": "GODREJPROP",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 2136.4,
+        "trigger_price": 2135.4,
+        "tick_size": 0.1,
+        "true_range": 59.7
+    },
+    {
+        "symbol": "GRANULES",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 533.45,
+        "trigger_price": 532.95,
+        "tick_size": 0.05,
+        "true_range": 21.55
+    },
+    {
+        "symbol": "GRAPHITE",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 576.0,
+        "trigger_price": 575.5,
+        "tick_size": 0.05,
+        "true_range": 14.0
+    },
+    {
+        "symbol": "HEG",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 511.05,
+        "trigger_price": 510.55,
+        "tick_size": 0.05,
+        "true_range": 44.2
+    },
+    {
+        "symbol": "HBLENGINE",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 988.0,
+        "trigger_price": 987.0,
+        "tick_size": 0.1,
+        "true_range": 120.0
+    },
+    {
+        "symbol": "HEXT",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 665.2,
+        "trigger_price": 664.7,
+        "tick_size": 0.05,
+        "true_range": 37.1
+    },
+    {
+        "symbol": "IDBI",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 98.66,
+        "trigger_price": 98.56,
+        "tick_size": 0.01,
+        "true_range": 2.41
+    },
+    {
+        "symbol": "IRB",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 43.27,
+        "trigger_price": 43.17,
+        "tick_size": 0.01,
+        "true_range": 1.26
+    },
+    {
+        "symbol": "ITCHOTELS",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 207.66,
+        "trigger_price": 207.56,
+        "tick_size": 0.01,
+        "true_range": 3.32
+    },
+    {
+        "symbol": "ITCHOTELS",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 205.3,
+        "trigger_price": 205.2,
+        "tick_size": 0.01,
+        "true_range": 4.36
+    },
+    {
+        "symbol": "INDIACEM",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 376.95,
+        "trigger_price": 376.45,
+        "tick_size": 0.05,
+        "true_range": 12.5
+    },
+    {
+        "symbol": "IREDA",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 148.42,
+        "trigger_price": 148.32,
+        "tick_size": 0.01,
+        "true_range": 1.83
+    },
+    {
+        "symbol": "IGL",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 208.2,
+        "trigger_price": 208.1,
+        "tick_size": 0.01,
+        "true_range": 5.0
+    },
+    {
+        "symbol": "INTELLECT",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 1095.0,
+        "trigger_price": 1094.0,
+        "tick_size": 0.1,
+        "true_range": 28.9
+    },
+    {
+        "symbol": "INDIGO",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 5569.0,
+        "trigger_price": 5564.0,
+        "tick_size": 0.5,
+        "true_range": 120.5
+    },
+    {
+        "symbol": "IGIL",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 344.6,
+        "trigger_price": 344.1,
+        "tick_size": 0.05,
+        "true_range": 16.05
+    },
+    {
+        "symbol": "JMFINANCIL",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 145.24,
+        "trigger_price": 145.14,
+        "tick_size": 0.01,
+        "true_range": 13.61
+    },
+    {
+        "symbol": "JUBLPHARMA",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 1105.5,
+        "trigger_price": 1104.5,
+        "tick_size": 0.1,
+        "true_range": 44.4
+    },
+    {
+        "symbol": "KPRMILL",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 1040.4,
+        "trigger_price": 1039.4,
+        "tick_size": 0.1,
+        "true_range": 37.6
+    },
+    {
+        "symbol": "KPIL",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 1244.2,
+        "trigger_price": 1243.2,
+        "tick_size": 0.1,
+        "true_range": 38.1
+    },
+    {
+        "symbol": "KEC",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 757.6,
+        "trigger_price": 757.1,
+        "tick_size": 0.05,
+        "true_range": 29.4
+    },
+    {
+        "symbol": "KEC",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 718.0,
+        "trigger_price": 717.5,
+        "tick_size": 0.05,
+        "true_range": 47.2
+    },
+    {
+        "symbol": "KFINTECH",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 1079.2,
+        "trigger_price": 1078.2,
+        "tick_size": 0.1,
+        "true_range": 31.8
+    },
+    {
+        "symbol": "KIRLOSBROS",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 1699.9,
+        "trigger_price": 1698.9,
+        "tick_size": 0.1,
+        "true_range": 115.1
+    },
+    {
+        "symbol": "KIRLOSBROS",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 1685.6,
+        "trigger_price": 1684.6,
+        "tick_size": 0.1,
+        "true_range": 44.4
+    },
+    {
+        "symbol": "KIMS",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 664.05,
+        "trigger_price": 663.55,
+        "tick_size": 0.05,
+        "true_range": 40.85
+    },
+    {
+        "symbol": "LATENTVIEW",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 434.0,
+        "trigger_price": 433.5,
+        "tick_size": 0.05,
+        "true_range": 37.1
+    },
+    {
+        "symbol": "LEMONTREE",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 162.25,
+        "trigger_price": 162.15,
+        "tick_size": 0.01,
+        "true_range": 2.63
+    },
+    {
+        "symbol": "LICI",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 898.0,
+        "trigger_price": 897.5,
+        "tick_size": 0.05,
+        "true_range": 33.9
+    },
+    {
+        "symbol": "LINDEINDIA",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 5844.0,
+        "trigger_price": 5839.0,
+        "tick_size": 0.5,
+        "true_range": 261.0
+    },
+    {
+        "symbol": "MAXHEALTH",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 1096.4,
+        "trigger_price": 1095.4,
+        "tick_size": 0.1,
+        "true_range": 44.9
+    },
+    {
+        "symbol": "MSUMI",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 45.65,
+        "trigger_price": 45.55,
+        "tick_size": 0.01,
+        "true_range": 1.13
+    },
+    {
+        "symbol": "NCC",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 187.47,
+        "trigger_price": 187.37,
+        "tick_size": 0.01,
+        "true_range": 8.47
+    },
+    {
+        "symbol": "NAVA",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 538.3,
+        "trigger_price": 537.8,
+        "tick_size": 0.05,
+        "true_range": 34.8
+    },
+    {
+        "symbol": "NAM-INDIA",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 865.2,
+        "trigger_price": 864.7,
+        "tick_size": 0.05,
+        "true_range": 25.8
+    },
+    {
+        "symbol": "NUVOCO",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 374.3,
+        "trigger_price": 373.8,
+        "tick_size": 0.05,
+        "true_range": 8.25
+    },
+    {
+        "symbol": "OBEROIRLTY",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 1758.0,
+        "trigger_price": 1757.0,
+        "tick_size": 0.1,
+        "true_range": 37.0
+    },
+    {
+        "symbol": "OLECTRA",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 1383.0,
+        "trigger_price": 1382.0,
+        "tick_size": 0.1,
+        "true_range": 94.6
+    },
+    {
+        "symbol": "PPLPHARMA",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 194.4,
+        "trigger_price": 194.3,
+        "tick_size": 0.01,
+        "true_range": 5.45
+    },
+    {
+        "symbol": "PRAJIND",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 325.0,
+        "trigger_price": 324.5,
+        "tick_size": 0.05,
+        "true_range": 7.45
+    },
+    {
+        "symbol": "RRKABEL",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 1340.0,
+        "trigger_price": 1339.0,
+        "tick_size": 0.1,
+        "true_range": 40.9
+    },
+    {
+        "symbol": "RADICO",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 3247.0,
+        "trigger_price": 3246.0,
+        "tick_size": 0.1,
+        "true_range": 72.0
+    },
+    {
+        "symbol": "RCF",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 146.28,
+        "trigger_price": 146.18,
+        "tick_size": 0.01,
+        "true_range": 3.62
+    },
+    {
+        "symbol": "RELIANCE",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 1475.9,
+        "trigger_price": 1474.9,
+        "tick_size": 0.1,
+        "true_range": 22.5
+    },
+    {
+        "symbol": "RPOWER",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 39.0,
+        "trigger_price": 38.9,
+        "tick_size": 0.01,
+        "true_range": 2.24
+    },
+    {
+        "symbol": "SBFC",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 110.0,
+        "trigger_price": 109.9,
+        "tick_size": 0.01,
+        "true_range": 3.1
+    },
+    {
+        "symbol": "SAGILITY",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 50.56,
+        "trigger_price": 50.46,
+        "tick_size": 0.01,
+        "true_range": 1.52
+    },
+    {
+        "symbol": "SAILIFE",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 868.0,
+        "trigger_price": 867.5,
+        "tick_size": 0.05,
+        "true_range": 54.35
+    },
+    {
+        "symbol": "SAPPHIRE",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 264.05,
+        "trigger_price": 263.55,
+        "tick_size": 0.05,
+        "true_range": 9.05
+    },
+    {
+        "symbol": "SARDAEN",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 525.55,
+        "trigger_price": 525.05,
+        "tick_size": 0.05,
+        "true_range": 19.0
+    },
+    {
+        "symbol": "ENRIN",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 3225.0,
+        "trigger_price": 3224.0,
+        "tick_size": 0.1,
+        "true_range": 103.6
+    },
+    {
+        "symbol": "SOBHA",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 1610.0,
+        "trigger_price": 1609.0,
+        "tick_size": 0.1,
+        "true_range": 45.0
+    },
+    {
+        "symbol": "SONACOMS",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 484.6,
+        "trigger_price": 484.1,
+        "tick_size": 0.05,
+        "true_range": 9.25
+    },
+    {
+        "symbol": "SUMICHEM",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 471.4,
+        "trigger_price": 470.9,
+        "tick_size": 0.05,
+        "true_range": 9.4
+    },
+    {
+        "symbol": "SUZLON",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 56.93,
+        "trigger_price": 56.83,
+        "tick_size": 0.01,
+        "true_range": 2.57
+    },
+    {
+        "symbol": "TATACHEM",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 854.95,
+        "trigger_price": 854.45,
+        "tick_size": 0.05,
+        "true_range": 21.45
+    },
+    {
+        "symbol": "TATACHEM",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 839.1,
+        "trigger_price": 838.6,
+        "tick_size": 0.05,
+        "true_range": 25.5
+    },
+    {
+        "symbol": "TATACONSUM",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 1138.6,
+        "trigger_price": 1137.6,
+        "tick_size": 0.1,
+        "true_range": 35.2
+    },
+    {
+        "symbol": "TEJASNET",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 504.2,
+        "trigger_price": 503.7,
+        "tick_size": 0.05,
+        "true_range": 21.5
+    },
+    {
+        "symbol": "RAMCOCEM",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 992.7,
+        "trigger_price": 991.7,
+        "tick_size": 0.1,
+        "true_range": 45.2
+    },
+    {
+        "symbol": "TRENT",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 4262.6,
+        "trigger_price": 4261.6,
+        "tick_size": 0.1,
+        "true_range": 364.7
+    },
+    {
+        "symbol": "TRITURBINE",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 513.15,
+        "trigger_price": 512.65,
+        "tick_size": 0.05,
+        "true_range": 14.5
+    },
+    {
+        "symbol": "UCOBANK",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 31.35,
+        "trigger_price": 31.25,
+        "tick_size": 0.01,
+        "true_range": 1.03
+    },
+    {
+        "symbol": "UTIAMC",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 1171.0,
+        "trigger_price": 1170.0,
+        "tick_size": 0.1,
+        "true_range": 33.8
+    },
+    {
+        "symbol": "UNITDSPR",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 1405.5,
+        "trigger_price": 1404.5,
+        "tick_size": 0.1,
+        "true_range": 24.6
+    },
+    {
+        "symbol": "VGUARD",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 359.0,
+        "trigger_price": 358.5,
+        "tick_size": 0.05,
+        "true_range": 10.25
+    },
+    {
+        "symbol": "VBL",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 461.9,
+        "trigger_price": 461.4,
+        "tick_size": 0.05,
+        "true_range": 9.6
+    },
+    {
+        "symbol": "VMM",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 139.8,
+        "trigger_price": 139.7,
+        "tick_size": 0.01,
+        "true_range": 3.9
+    },
+    {
+        "symbol": "WAAREEENER",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 3261.9,
+        "trigger_price": 3260.9,
+        "tick_size": 0.1,
+        "true_range": 100.7
+    },
+    {
+        "symbol": "WHIRLPOOL",
+        "setup_date": "2025-11-10T00:00:00.000",
+        "entry_date": "2025-11-11T00:00:00.000",
+        "entry_price": 1275.4,
+        "trigger_price": 1274.4,
+        "tick_size": 0.1,
+        "true_range": 75.3
+    },
+    {
+        "symbol": "WHIRLPOOL",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 1232.0,
+        "trigger_price": 1231.0,
+        "tick_size": 0.1,
+        "true_range": 59.7
+    },
+    {
+        "symbol": "WIPRO",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 236.0,
+        "trigger_price": 235.9,
+        "tick_size": 0.01,
+        "true_range": 3.25
+    },
+    {
+        "symbol": "WOCKPHARMA",
+        "setup_date": "2025-11-11T00:00:00.000",
+        "entry_date": "2025-11-12T00:00:00.000",
+        "entry_price": 1325.3,
+        "trigger_price": 1324.3,
+        "tick_size": 0.1,
+        "true_range": 36.0
+    },
+    {
+        "symbol": "ECLERX",
+        "setup_date": "2025-11-07T00:00:00.000",
+        "entry_date": "2025-11-08T00:00:00.000",
+        "entry_price": 4252.0,
+        "trigger_price": 4251.0,
+        "tick_size": 0.1,
+        "true_range": 328.0
+    }
+]
