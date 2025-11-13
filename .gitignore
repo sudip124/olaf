@@ -49,3 +49,4 @@ tmp/
 strategies/strat80_20/REFACTORING_NOTES.md
 strategies/strat80_20/new.py
 strategies/README.md
+run_config.json

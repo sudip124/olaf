@@ -203,9 +203,10 @@ def generate_signals(
 
                 if trigger_time is not None and this_time > trigger_time:
                     # Check if we can take an entry (max_attempts limit)
+                    # CRITICAL: Only enter if NOT already in position (prevents overlapping positions)
                     can_enter = (max_attempts is None) or (entries_today < max_attempts)
                     
-                    if can_enter and df['high'].iloc[i] >= entry_price:
+                    if can_enter and not in_long and df['high'].iloc[i] >= entry_price:
                         fill_price = entry_price
                         fill_price = round(fill_price / tick) * tick
 
@@ -235,8 +236,8 @@ def generate_signals(
                                 'price': fill_price,
                                 'details': f"Long entry #{entries_today}; SL: {stop_loss} (entry - {initial_sl_ticks} ticks); TP: {take_profit} (use_take_profit: {use_take_profit}); risk: {risk}"
                             })
-                    elif not can_enter and df['high'].iloc[i] >= entry_price:
-                        # Max attempts reached, log missed opportunity
+                    elif not can_enter and not in_long and df['high'].iloc[i] >= entry_price:
+                        # Max attempts reached, log missed opportunity (only if not already in position)
                         if log:
                             signals_log.append({
                                 'timestamp': this_time,

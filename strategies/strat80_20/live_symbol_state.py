@@ -130,8 +130,10 @@ class SymbolState:
                 # Trailing stoploss logic: Update on green bars (price moving up)
                 # This implements the OpenAlgo trailing pattern by modifying the broker-held SELL STOP order
                 if self.in_position and self.stop_loss is not None and bar_open <= bar_close:
-                    # Calculate new stoploss just below the bar low
-                    new_sl = bar_low - 1e-8
+                    # Calculate new stoploss with a meaningful buffer below bar low
+                    # Use 2 ticks below bar_low to provide cushion against minor retracements
+                    buffer_ticks = 2
+                    new_sl = bar_low - (buffer_ticks * self.tick_size)
                     # Round new trailing SL to nearest tick before comparison and assignment
                     new_sl = round(new_sl / self.tick_size) * self.tick_size
                     
@@ -196,7 +198,8 @@ class SymbolState:
         # Re-arm logic: after exit, if already triggered and not in position, and no pending order,
         # place a fresh buy stop when price is below entry_price and entries_today < max_attempts
         # Also retry if order was rejected and market is now open
-        # CRITICAL: Only place order if NOT already in position (prevents duplicate entries)
+        # CRITICAL: Only place order if NOT already in position AND no pending entry order
+        # This prevents taking multiple overlapping positions (strategy exits fully before re-entering)
         if self.triggered and not self.in_position and self.entry_order_id is None:
             can_retry = (self.max_attempts is None) or (self.entries_today < self.max_attempts)
             # Allow retry if:
@@ -205,8 +208,8 @@ class SymbolState:
             should_retry = can_retry and (ltp <= self.entry_price or self.pending_retry)
             if should_retry and is_market_open(ts, self.market_open_hour, self.market_open_minute,
                                                self.market_close_hour, self.market_close_minute):
-                # Double-check we're not in position before placing order
-                if not self.in_position:
+                # Triple-check: not in position, no pending order, and haven't exceeded attempts
+                if not self.in_position and self.entry_order_id is None:
                     self.place_buy_stop(ts)
                     self.pending_retry = False  # Clear the retry flag after attempting
 
@@ -253,18 +256,21 @@ class SymbolState:
                 self.place_or_update_sell_stop(self.stop_loss, ts)
             
             # Emergency failsafe: if broker-held SL order is missing, place it
-            elif not self.sl_order_id:
-                logger.warning(f"[{self.symbol}] In position but no broker SL order! Placing emergency SL.")
-                log_event({
-                    'timestamp': ts.isoformat(),
-                    'date': ts.date().isoformat(),
-                    'time': ts.time().isoformat(),
-                    'event': 'Emergency SL Order Placed',
-                    'symbol': self.symbol,
-                    'price': self.stop_loss,
-                    'details': f"Broker SL order missing, placing at {self.stop_loss}"
-                })
-                self.place_or_update_sell_stop(self.stop_loss, ts)
+            # Skip if sl_order_id is "PENDING" (order placement in progress)
+            elif not self.sl_order_id or self.sl_order_id == "PENDING":
+                # Only trigger emergency if sl_order_id is None (not PENDING)
+                if self.sl_order_id is None:
+                    logger.warning(f"[{self.symbol}] In position but no broker SL order! Placing emergency SL.")
+                    log_event({
+                        'timestamp': ts.isoformat(),
+                        'date': ts.date().isoformat(),
+                        'time': ts.time().isoformat(),
+                        'event': 'Emergency SL Order Placed',
+                        'symbol': self.symbol,
+                        'price': self.stop_loss,
+                        'details': f"Broker SL order missing, placing at {self.stop_loss}"
+                    })
+                    self.place_or_update_sell_stop(self.stop_loss, ts)
 
 
     def place_buy_stop(self, ts=None):
@@ -279,6 +285,12 @@ class SymbolState:
         # CRITICAL: Check if already in position to prevent duplicate orders
         if self.in_position:
             logger.warning(f"[{self.symbol}] Skipping buy stop order: already in position")
+            return
+        
+        # CRITICAL: Check if there's already a pending entry order to prevent duplicates
+        # This handles race conditions where order fills but callback hasn't fired yet
+        if self.entry_order_id is not None and self.entry_order_id != "":
+            logger.warning(f"[{self.symbol}] Skipping buy stop order: pending order {self.entry_order_id} already exists")
             return
         
         # Check if market is open
@@ -450,6 +462,11 @@ class SymbolState:
         # Round to tick size
         new_stop = round(float(new_stop) / self.tick_size) * self.tick_size
         
+        # Skip if new_stop equals current stop_loss (no change needed)
+        if self.stop_loss is not None and abs(new_stop - self.stop_loss) < 1e-9:
+            logger.debug(f"[{self.symbol}] Skipping SL update: new_stop ({new_stop}) equals current stop_loss ({self.stop_loss})")
+            return
+        
         try:
             # If we have an existing SL order, try to modify it
             if self.sl_order_id:
@@ -506,6 +523,12 @@ class SymbolState:
             
             # Place new SELL STOP order (either no existing order, or modify failed)
             logger.info(f"[{self.symbol}] Placing new SELL STOP order at {new_stop}")
+            
+            # CRITICAL: Set sl_order_id to placeholder BEFORE placing order
+            # This prevents the emergency failsafe in process_tick() from triggering
+            # during the brief window between placing the order and getting the response
+            self.sl_order_id = "PENDING"
+            
             resp = client.placeorder(
                 strategy=STRATEGY_NAME,
                 exchange=EXCHANGE,
@@ -519,12 +542,18 @@ class SymbolState:
             )
             
             # Extract order ID from response
-            self.sl_order_id = (
+            order_id = (
                 resp.get('order_id') or resp.get('orderid') or 
                 resp.get('orderId') or resp.get('data', {}).get('order_id')
             )
             
-            if self.sl_order_id:
+            # Update with actual order ID (or clear if failed)
+            if order_id:
+                self.sl_order_id = order_id
+            else:
+                self.sl_order_id = None
+            
+            if self.sl_order_id and self.sl_order_id != "PENDING":
                 log_event({
                     'timestamp': ts.isoformat(),
                     'date': ts.date().isoformat(),
@@ -536,6 +565,7 @@ class SymbolState:
                 })
             else:
                 logger.error(f"[{self.symbol}] Failed to extract order_id from response: {resp}")
+                self.sl_order_id = None  # Clear the PENDING placeholder
                 
         except Exception as e:
             logger.error(f"[{self.symbol}] Error placing/updating Sell Stop: {e}")
@@ -589,6 +619,10 @@ class SymbolState:
                 self.last_filled_entry_order_id = order_id
             # Clear any pending retry since entry succeeded
             self.pending_retry = False
+            # CRITICAL: Clear entry_order_id after fill to prevent re-arm logic from being blocked
+            # The re-arm logic checks entry_order_id is None before placing new orders
+            # Without this, the strategy cannot re-enter after an exit
+            self.entry_order_id = None
             
             # Log with detailed info
             logger.info(f"[{self.symbol}] Entry filled at {fill_price}, initial_sl_ticks={self.initial_sl_ticks}, risk={risk}, SL={self.stop_loss}, TP={self.take_profit}")

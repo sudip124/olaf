@@ -1,5 +1,5 @@
 {
-    "mode": "backtest",
+    "mode": "live",
     "strategy": "strat80_20",
     "db_path": "db/nse.db",
     "scan": {
@@ -11,11 +11,10 @@
             "ABSLAMC",
             "KFINTECH"
         ],
-        "from_date": "2025-11-07",
+        "from_date": "2024-10-01",
         "to_date": "",
         "interval": "D",
         "volume_threshold": 100000,
-        "sort_by_volume": true,
         "output_file": "scanner_setups.json",
         "use_symbols_csv": "ind_nifty500list"
     },
@@ -24,7 +23,6 @@
             "AUBANK",
             "APTUS",
             "ASHOKLEY",
-            "ATHERENERG",
             "DMART",
             "CUB",
             "NYKAA",
@@ -50,7 +48,7 @@
             "UTIAMC",
             "VBL"
         ],
-        "from_date": "2025-05-01",
+        "from_date": "2024-10-01",
         "to_date": "",
         "scan_interval": "D",
         "backtest_interval": "15m",

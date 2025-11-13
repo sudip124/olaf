@@ -347,7 +347,6 @@ def do_scan(cfg: Dict[str, Any]) -> None:
     # Other options
     interval = scan_cfg.get("interval", "D")
     volume_threshold = int(scan_cfg.get("volume_threshold", 100000))
-    sort_by_volume = bool(scan_cfg.get("sort_by_volume", True))
     output_file = scan_cfg.get("output_file") or os.path.join(ROOT_DIR, "scanner_setups.json")
 
     # Ensure DB/logs directories exist before importing modules that open the SQLite engine
@@ -384,9 +383,6 @@ def do_scan(cfg: Dict[str, Any]) -> None:
     if all_setups:
         import pandas as pd
         df = pd.concat(all_setups, ignore_index=True)
-        # Sort by volume if requested and available
-        if sort_by_volume and 'volume' in df.columns:
-            df = df.sort_values('volume', ascending=False)
         print(f"\n[Scan] Total setups found: {len(df)}")
         if not df.empty:
             print(df[['symbol', 'setup_date', 'entry_date', 'entry_price', 'trigger_price']].to_string(index=False))

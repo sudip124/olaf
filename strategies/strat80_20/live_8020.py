@@ -147,8 +147,25 @@ def recover_state_from_broker():
     # Recover positions
     try:
         position_response = client.positionbook()
-        if position_response.get('status') == 'success':
-            positions = position_response.get('data', [])
+        if position_response and isinstance(position_response, dict) and position_response.get('status') == 'success':
+            data = position_response.get('data', {})
+            # Per OpenAlgo docs, data is a dict, not a list
+            # Extract positions list from the data dict (could be under various keys)
+            if isinstance(data, dict):
+                # Try common keys where positions might be stored
+                positions = data.get('positions', []) or data.get('positionbook', []) or []
+            elif isinstance(data, list):
+                # Some brokers might return list directly
+                positions = data
+            else:
+                logger.warning(f"[Recovery] Unexpected data type in positionbook: {type(data).__name__}")
+                positions = []
+            
+            # Validate that positions is a list
+            if not isinstance(positions, list):
+                logger.warning(f"[Recovery] Expected list of positions, got {type(positions).__name__}: {positions}")
+                positions = []
+            
             for pos in positions:
                 raw_symbol = pos.get('symbol') or pos.get('trading_symbol') or pos.get('tradingsymbol')
                 symbol_norm = _normalize_symbol(raw_symbol)
@@ -186,8 +203,25 @@ def recover_state_from_broker():
     # Recover pending orders
     try:
         order_response = client.orderbook()
-        if order_response.get('status') == 'success':
-            orders = order_response.get('data', [])
+        if order_response and isinstance(order_response, dict) and order_response.get('status') == 'success':
+            data = order_response.get('data', {})
+            # Per OpenAlgo docs, data is a dict, not a list
+            # Extract orders list from the data dict (could be under various keys)
+            if isinstance(data, dict):
+                # Try common keys where orders might be stored
+                orders = data.get('orders', []) or data.get('orderbook', []) or []
+            elif isinstance(data, list):
+                # Some brokers might return list directly
+                orders = data
+            else:
+                logger.warning(f"[Recovery] Unexpected data type in orderbook: {type(data).__name__}")
+                orders = []
+            
+            # Validate that orders is a list
+            if not isinstance(orders, list):
+                logger.warning(f"[Recovery] Expected list of orders, got {type(orders).__name__}: {orders}")
+                orders = []
+            
             for order in orders:
                 raw_symbol = order.get('symbol') or order.get('trading_symbol') or order.get('tradingsymbol')
                 symbol_norm = _normalize_symbol(raw_symbol)
