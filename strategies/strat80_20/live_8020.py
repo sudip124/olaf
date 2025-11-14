@@ -12,6 +12,7 @@ import pytz
 import csv
 import logging
 from typing import Optional
+from decimal import Decimal, ROUND_HALF_UP
 from openalgo import api
 from data_manager.config import OPENALGO_URL, API_KEY, EXCHANGE
 from strategies.base_live import LiveStrategy
@@ -181,11 +182,12 @@ def recover_state_from_broker():
                     # Reconstruct stop loss and take profit based on entry price
                     state = symbol_states[symbol]
                     state.stop_loss = avg_price - (state.initial_sl_ticks * state.tick_size)
-                    state.stop_loss = round(state.stop_loss / state.tick_size) * state.tick_size
+                    # Use Decimal precision to avoid floating-point errors
+                    state.stop_loss = float(Decimal(str(state.stop_loss / state.tick_size)).quantize(Decimal('1'), rounding=ROUND_HALF_UP) * Decimal(str(state.tick_size)))
                     risk = avg_price - state.stop_loss
                     if state.use_take_profit:
                         state.take_profit = avg_price + state.take_profit_mult * risk
-                        state.take_profit = round(state.take_profit / state.tick_size) * state.tick_size
+                        state.take_profit = float(Decimal(str(state.take_profit / state.tick_size)).quantize(Decimal('1'), rounding=ROUND_HALF_UP) * Decimal(str(state.tick_size)))
                     state.entries_today = 1  # Assume at least 1 entry
                     logger.info(f"[Recovery] Restored position for {symbol}: qty={qty}, entry={avg_price}, SL={state.stop_loss}")
                     log_event({
@@ -267,8 +269,8 @@ def recover_state_from_broker():
                         except Exception:
                             trig = 0.0
                         if trig:
-                            # Round to tick and set
-                            trig = round(trig / state.tick_size) * state.tick_size
+                            # Round to tick using Decimal precision
+                            trig = float(Decimal(str(trig / state.tick_size)).quantize(Decimal('1'), rounding=ROUND_HALF_UP) * Decimal(str(state.tick_size)))
                             state.stop_loss = trig
                         logger.info(f"[Recovery] Restored protective SL for {symbol}: order_id={order_id}, trigger={trig}")
                         log_event({
@@ -343,7 +345,9 @@ def load_setups(setups_df, market_open_hour, market_open_minute, market_close_ho
     return instruments
 
 
-def poll_orders_and_positions():
+def poll_orders_and_positions(client, symbol_states, timezone, logger, log_event):
+    """Periodically fetch open orders and positions, update state."""
+    logger.info(f"[Polling Thread] [TID:{threading.get_ident()}] Started polling thread")
     while True:
         current_time = datetime.datetime.now(timezone)
         
@@ -362,27 +366,74 @@ def poll_orders_and_positions():
 
         for symbol, state in symbol_states.items():
             qty = pos_dict.get(symbol, 0)
-            if qty > 0:
-                state.in_position = True
-            elif qty < 0:
-                logger.warning(f"Negative position for {symbol}: {qty}. Squaring off.")
-                state.place_buy_market()
-                state.in_position = False
-            else:
-                state.in_position = False
+            # CRITICAL FIX: Only update in_position when there's a true discrepancy
+            # Don't blindly overwrite based on broker position (which can lag behind WebSocket updates)
+            # This prevents race condition where polling thread clears in_position flag
+            # before WebSocket callback has processed the fill, allowing duplicate re-entries
+            
+            # THREAD SAFETY: Acquire lock before checking/modifying position state
+            logger.trace(f"[{symbol}] [TID:{threading.get_ident()}] [Polling] Acquiring lock for position sync") if hasattr(logger, 'trace') else None
+            with state._state_lock:
+                if qty > 0:
+                    # If broker says we have position but we think we don't, sync to broker state
+                    if not state.in_position:
+                        logger.warning(f"[{symbol}] [TID:{threading.get_ident()}] [Polling] Position sync: broker reports position but state says no position. Syncing.")
+                        state.in_position = True
+                elif qty < 0:
+                    # Unintended short position - square off immediately
+                    logger.warning(f"[TID:{threading.get_ident()}] [Polling] Negative position for {symbol}: {qty}. Squaring off.")
+                    state.place_buy_market()
+                    state.in_position = False
+                elif qty == 0:
+                    # Only clear in_position if we think we have one but broker says we don't
+                    # This allows WebSocket callback to set in_position=True and have it stick
+                    # until broker confirms the position (avoiding race condition)
+                    if state.in_position:
+                        # Double-check: if we have a pending SL order, we probably do have a position
+                        # and broker position just hasn't updated yet (latency)
+                        if state.sl_order_id and state.sl_order_id != "PENDING":
+                            logger.debug(f"[{symbol}] [TID:{threading.get_ident()}] [Polling] Broker shows no position but we have SL order {state.sl_order_id}. Keeping in_position=True (broker lag).")
+                            # Don't clear in_position - wait for broker to catch up
+                        else:
+                            # No SL order and broker says no position - trust broker and clear state
+                            logger.warning(f"[{symbol}] [TID:{threading.get_ident()}] [Polling] Position sync: broker reports no position but state says in position. Clearing state.")
+                            state.in_position = False
+                            if state.sl_order_id:
+                                logger.warning(f"[{symbol}] [TID:{threading.get_ident()}] [Polling] Clearing orphaned sl_order_id: {state.sl_order_id}")
+                                state.sl_order_id = None
 
-            if (state.pending_retry and not state.in_position and 
-                state.entry_order_id is None and is_market_open(current_time, state.market_open_hour, 
-                                                                 state.market_open_minute, state.market_close_hour, 
-                                                                 state.market_close_minute)):
-                can_retry = (state.max_attempts is None) or (state.entries_today < state.max_attempts)
-                if can_retry and state.triggered:
-                    logger.info(f"[{symbol}] Retrying order placement after market open")
-                    state.place_buy_stop(current_time)
+            # CRITICAL SECTION: Check pending retry conditions atomically
+            logger.trace(f"[{symbol}] [TID:{threading.get_ident()}] [Polling] Acquiring lock for retry check") if hasattr(logger, 'trace') else None
+            with state._state_lock:
+                should_retry = (
+                    state.pending_retry and 
+                    not state.in_position and 
+                    state.entry_order_id is None and 
+                    is_market_open(current_time, state.market_open_hour, 
+                                  state.market_open_minute, state.market_close_hour, 
+                                  state.market_close_minute) and
+                    (state.max_attempts is None or state.entries_today < state.max_attempts) and
+                    state.triggered
+                )
+            
+            if should_retry:
+                logger.info(f"[{symbol}] [TID:{threading.get_ident()}] [Polling] Retrying order placement after market open")
+                state.place_buy_stop(current_time)
 
-            if state.entry_order_id and not state.in_position:
+            # Check entry order status only if we have a pending order AND we're not already in position
+            # This prevents race condition where we query order status while WebSocket callback is processing
+            # CRITICAL SECTION: Read entry_order_id and in_position atomically
+            logger.trace(f"[{symbol}] [TID:{threading.get_ident()}] [Polling] Acquiring lock for order status check") if hasattr(logger, 'trace') else None
+            with state._state_lock:
+                should_check_order = state.entry_order_id and not state.in_position
+                order_to_check = state.entry_order_id if should_check_order else None
+                if should_check_order:
+                    logger.debug(f"[{symbol}] [TID:{threading.get_ident()}] [Polling] Will check status for order {order_to_check}")
+            
+            if should_check_order:
                 try:
-                    order_info = client.orderstatus(order_id=state.entry_order_id, strategy=STRATEGY_NAME)
+                    logger.debug(f"[{symbol}] [TID:{threading.get_ident()}] [Polling] Calling orderstatus API for {order_to_check}")
+                    order_info = client.orderstatus(order_id=order_to_check, strategy=STRATEGY_NAME)
                     if order_info.get('status') == 'success':
                         data = order_info.get('data', {}) or order_info
                         order_status = data.get('order_status') or data.get('status') or data.get('orderStatus')
@@ -390,17 +441,20 @@ def poll_orders_and_positions():
                         if order_status in ('complete', 'filled'):
                             fill_price = avg_price or state.entry_price
                             update = {
-                                'order_id': state.entry_order_id,
+                                'order_id': order_to_check,
                                 'status': 'filled',
                                 'fill_price': fill_price,
                                 'symbol': symbol
                             }
                             state.on_order_update(update)
-                            state.entry_order_id = None
+                            # Clear entry_order_id if it still matches (on_order_update already clears it)
+                            # No need to lock - on_order_update handles it
                 except Exception as e:
-                    logger.error(f"[{symbol}] Error polling order status: {e}")
+                    logger.error(f"[{symbol}] [TID:{threading.get_ident()}] [Polling] Error polling order status: {e}")
 
-        time.sleep(5)
+        # Trust WebSocket for real-time updates; polling is just backup/validation
+        # Reduced from 5s to 30s to minimize lock contention and API load
+        time.sleep(30)
 
 
 class Live8020(LiveStrategy):

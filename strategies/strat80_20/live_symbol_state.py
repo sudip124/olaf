@@ -1,5 +1,7 @@
 import pandas as pd
 import datetime
+import threading
+from decimal import Decimal, ROUND_HALF_UP
 
 from data_manager.config import EXCHANGE
 from .live_config import STRATEGY_NAME
@@ -19,6 +21,9 @@ class SymbolState:
                  use_take_profit, trigger_window_minutes, max_attempts, max_order_retries,
                  order_timeout_minutes=None, exit_before_close_minutes=None,
                  ignore_initial_minutes: int = 1):
+        # Threading lock for protecting critical state transitions
+        self._state_lock = threading.Lock()
+        
         self.symbol = symbol
         self.entry_price = entry_price
         self.trigger_price = trigger_price
@@ -80,28 +85,46 @@ class SymbolState:
         if ts < session_open_dt + datetime.timedelta(minutes=self.ignore_initial_minutes):
             return
 
-        # Update day_low
+        # Update day_low (no lock needed - monotonic decrease, no critical state)
         self.day_low = min(self.day_low, ltp)
         
-        # Check if we need to cancel stale orders
-        if self.entry_order_id is not None and self.order_placed_time is not None:
-            time_since_order = (ts - self.order_placed_time).total_seconds() / 60
-            if time_since_order > self.order_timeout_minutes:
-                logger.info(f"[{self.symbol}] Canceling stale order {self.entry_order_id} (placed {time_since_order:.1f} min ago)")
-                cancelled = self.cancel_order(self.entry_order_id, ts)
-                if cancelled:
-                    self.entry_order_id = None
-                    self.order_placed_time = None
+        # CRITICAL SECTION: Check if we need to cancel stale orders
+        # Must read entry_order_id and order_placed_time atomically
+        logger.trace(f"[{self.symbol}] [TID:{threading.get_ident()}] Acquiring lock for stale order check") if hasattr(logger, 'trace') else None
+        with self._state_lock:
+            if self.entry_order_id is not None and self.order_placed_time is not None:
+                time_since_order = (ts - self.order_placed_time).total_seconds() / 60
+                if time_since_order > self.order_timeout_minutes:
+                    order_to_cancel = self.entry_order_id
+                    logger.info(f"[{self.symbol}] [TID:{threading.get_ident()}] Canceling stale order {order_to_cancel} (placed {time_since_order:.1f} min ago)")
+                    # Release lock before API call to avoid blocking
+                    # We copied order_id so it's safe
+        
+        # Cancel order outside lock (API call can take time)
+        if 'order_to_cancel' in locals():
+            logger.debug(f"[{self.symbol}] [TID:{threading.get_ident()}] Calling cancel_order API for {order_to_cancel}")
+            cancelled = self.cancel_order(order_to_cancel, ts)
+            logger.trace(f"[{self.symbol}] [TID:{threading.get_ident()}] Acquiring lock for post-cancel re-check") if hasattr(logger, 'trace') else None
+            with self._state_lock:
+                # Re-check: only clear if order_id hasn't changed (idempotency check)
+                if self.entry_order_id == order_to_cancel:
+                    if cancelled:
+                        logger.debug(f"[{self.symbol}] [TID:{threading.get_ident()}] Cleared entry_order_id after successful cancel")
+                        self.entry_order_id = None
+                        self.order_placed_time = None
+                    else:
+                        logger.warning(f"[{self.symbol}] [TID:{threading.get_ident()}] Cancel failed but order_id unchanged")
+                        log_event({
+                            'timestamp': ts.isoformat(),
+                            'date': ts.date().isoformat(),
+                            'time': ts.strftime('%H:%M:%S'),
+                            'event': 'Order Cancel Failed',
+                            'symbol': self.symbol,
+                            'price': 0,
+                            'details': f"Cancel failed for order {order_to_cancel}; will keep state and retry on next cycle"
+                        })
                 else:
-                    log_event({
-                        'timestamp': ts.isoformat(),
-                        'date': ts.date().isoformat(),
-                        'time': ts.strftime('%H:%M:%S'),
-                        'event': 'Order Cancel Failed',
-                        'symbol': self.symbol,
-                        'price': 0,
-                        'details': f"Cancel failed for order {self.entry_order_id}; will keep state and retry on next cycle"
-                    })
+                    logger.warning(f"[{self.symbol}] [TID:{threading.get_ident()}] RACE DETECTED: entry_order_id changed from {order_to_cancel} to {self.entry_order_id} during cancel")
 
         # Determine 15m bar start
         bar_start = ts.floor('15min')
@@ -129,31 +152,40 @@ class SymbolState:
 
                 # Trailing stoploss logic: Update on green bars (price moving up)
                 # This implements the OpenAlgo trailing pattern by modifying the broker-held SELL STOP order
-                if self.in_position and self.stop_loss is not None and bar_open <= bar_close:
+                # CRITICAL SECTION: Read in_position and stop_loss atomically
+                with self._state_lock:
+                    should_trail = self.in_position and self.stop_loss is not None and bar_open <= bar_close
+                    current_sl = self.stop_loss
+                
+                if should_trail:
                     # Calculate new stoploss with a meaningful buffer below bar low
                     # Use 2 ticks below bar_low to provide cushion against minor retracements
                     buffer_ticks = 2
                     new_sl = bar_low - (buffer_ticks * self.tick_size)
-                    # Round new trailing SL to nearest tick before comparison and assignment
-                    new_sl = round(new_sl / self.tick_size) * self.tick_size
+                    # Round new trailing SL to nearest tick before comparison and assignment using Decimal precision
+                    new_sl = float(Decimal(str(new_sl / self.tick_size)).quantize(Decimal('1'), rounding=ROUND_HALF_UP) * Decimal(str(self.tick_size)))
                     
                     # Only trail upward (never move stoploss down)
-                    if new_sl > self.stop_loss:
-                        old_sl = self.stop_loss
-                        self.stop_loss = new_sl
-                        logger.info(f"[{self.symbol}] Trailing SL update: {old_sl} -> {new_sl}")
-                        log_event({
-                            'timestamp': self.current_bar_start.isoformat(),
-                            'date': self.current_bar_start.date().isoformat(),
-                            'time': self.current_bar_start.time().isoformat(),
-                            'event': 'Trailing SL Update',
-                            'symbol': self.symbol,
-                            'price': new_sl,
-                            'details': f"Updated SL from {old_sl} to {new_sl} on green bar (bar_open: {bar_open}, bar_close: {bar_close}, bar_low: {bar_low})"
-                        })
-                        # Modify the broker-held SELL STOP order to the new trailing stoploss
-                        # This is the key step: we update the broker's order so it executes at the new price
-                        self.place_or_update_sell_stop(self.stop_loss, self.current_bar_start)
+                    if new_sl > current_sl:
+                        # CRITICAL SECTION: Update stop_loss atomically
+                        with self._state_lock:
+                            # Re-check after acquiring lock (might have changed)
+                            if new_sl > self.stop_loss:
+                                old_sl = self.stop_loss
+                                self.stop_loss = new_sl
+                                logger.info(f"[{self.symbol}] Trailing SL update: {old_sl} -> {new_sl}")
+                                log_event({
+                                    'timestamp': self.current_bar_start.isoformat(),
+                                    'date': self.current_bar_start.date().isoformat(),
+                                    'time': self.current_bar_start.time().isoformat(),
+                                    'event': 'Trailing SL Update',
+                                    'symbol': self.symbol,
+                                    'price': new_sl,
+                                    'details': f"Updated SL from {old_sl} to {new_sl} on green bar (bar_open: {bar_open}, bar_close: {bar_close}, bar_low: {bar_low})"
+                                })
+                                # Modify the broker-held SELL STOP order to the new trailing stoploss
+                                # place_or_update_sell_stop will acquire lock internally
+                        self.place_or_update_sell_stop(new_sl, self.current_bar_start)
 
             # Reset for new bar
             self.current_bar_ticks = []
@@ -168,9 +200,15 @@ class SymbolState:
         session_start_dt = timezone.localize(datetime.datetime(ts.year, ts.month, ts.day, self.market_open_hour, self.market_open_minute, 0))
         first60_end = session_start_dt + datetime.timedelta(minutes=self.trigger_window_minutes)
 
-        if not self.triggered and ts < first60_end and ltp <= self.trigger_price:
-            self.triggered = True
-            self.trigger_time = ts
+        # CRITICAL SECTION: Check trigger state and entries atomically
+        with self._state_lock:
+            should_trigger = not self.triggered and ts < first60_end and ltp <= self.trigger_price
+            if should_trigger:
+                self.triggered = True
+                self.trigger_time = ts
+                can_place = self.max_attempts is None or self.entries_today < self.max_attempts
+        
+        if should_trigger:
             log_event({
                 'timestamp': ts.isoformat(),
                 'date': ts.date().isoformat(),
@@ -182,7 +220,7 @@ class SymbolState:
             })
             # Place buy SL-M order
             # Only place if under max attempts limit
-            if self.max_attempts is None or self.entries_today < self.max_attempts:
+            if can_place:
                 self.place_buy_stop(ts)
             else:
                 log_event({
@@ -198,25 +236,35 @@ class SymbolState:
         # Re-arm logic: after exit, if already triggered and not in position, and no pending order,
         # place a fresh buy stop when price is below entry_price and entries_today < max_attempts
         # Also retry if order was rejected and market is now open
-        # CRITICAL: Only place order if NOT already in position AND no pending entry order
-        # This prevents taking multiple overlapping positions (strategy exits fully before re-entering)
-        if self.triggered and not self.in_position and self.entry_order_id is None:
-            can_retry = (self.max_attempts is None) or (self.entries_today < self.max_attempts)
-            # Allow retry if:
-            # 1. Price is below entry_price (normal condition)
-            # 2. Order was rejected and we're flagged for retry (pending_retry)
-            should_retry = can_retry and (ltp <= self.entry_price or self.pending_retry)
-            if should_retry and is_market_open(ts, self.market_open_hour, self.market_open_minute,
-                                               self.market_close_hour, self.market_close_minute):
-                # Triple-check: not in position, no pending order, and haven't exceeded attempts
-                if not self.in_position and self.entry_order_id is None:
-                    self.place_buy_stop(ts)
-                    self.pending_retry = False  # Clear the retry flag after attempting
+        # CRITICAL SECTION: Check all conditions atomically to prevent race conditions
+        with self._state_lock:
+            should_attempt_reentry = (
+                self.triggered and 
+                not self.in_position and 
+                self.entry_order_id is None and
+                ((self.max_attempts is None) or (self.entries_today < self.max_attempts)) and
+                (ltp <= self.entry_price or self.pending_retry) and
+                is_market_open(ts, self.market_open_hour, self.market_open_minute,
+                              self.market_close_hour, self.market_close_minute)
+            )
+            if should_attempt_reentry:
+                # Clear retry flag while we have the lock
+                self.pending_retry = False 
+        
+        if should_attempt_reentry:
+            self.place_buy_stop(ts)
 
         # Auto-exit before market close based on configured minutes
         market_close_dt = ts.replace(hour=self.market_close_hour, minute=self.market_close_minute, second=0, microsecond=0)
         exit_cutoff_dt = market_close_dt - datetime.timedelta(minutes=self.exit_before_close_minutes)
-        if self.in_position and ts >= exit_cutoff_dt:
+        
+        # CRITICAL SECTION: Check if should auto-exit atomically
+        with self._state_lock:
+            should_auto_exit = self.in_position and ts >= exit_cutoff_dt
+            if should_auto_exit:
+                sl_to_cancel = self.sl_order_id
+        
+        if should_auto_exit:
             log_event({
                 'timestamp': ts.isoformat(),
                 'date': ts.date().isoformat(),
@@ -227,50 +275,59 @@ class SymbolState:
                 'details': f"Exiting position {self.exit_before_close_minutes} min before market close (cutoff: {exit_cutoff_dt.time().isoformat(timespec='seconds')})"
             })
             # Cancel protective SL if present to avoid duplicate exits
-            if self.sl_order_id:
-                cancelled = self.cancel_order(self.sl_order_id, ts)
-                if cancelled:
-                    self.sl_order_id = None
+            if sl_to_cancel:
+                cancelled = self.cancel_order(sl_to_cancel, ts)
+                with self._state_lock:
+                    if cancelled and self.sl_order_id == sl_to_cancel:
+                        self.sl_order_id = None
             self.place_sell_market()
-            self.reset_after_exit()
+            with self._state_lock:
+                self.reset_after_exit()
             return  # Skip further processing this tick
 
         # Monitor for exits - broker-held SELL STOP will handle stoploss automatically
         # We only keep emergency checks here
-        if self.in_position:
+        # CRITICAL SECTION: Check position state atomically
+        with self._state_lock:
+            should_check_emergency = self.in_position
+            stop_loss_missing = should_check_emergency and self.stop_loss is None
+            sl_order_missing = should_check_emergency and not stop_loss_missing and self.sl_order_id is None
+            current_stop_loss = self.stop_loss
+        
+        if should_check_emergency:
             # Defensive check: ensure stop_loss is set and broker SL order exists
-            if self.stop_loss is None:
+            if stop_loss_missing:
                 logger.error(f"[{self.symbol}] In position but stop_loss is None! Setting emergency SL.")
-                self.stop_loss = self.long_entry_price - (self.initial_sl_ticks * self.tick_size) if self.long_entry_price else self.day_low - 1e-8
-                self.stop_loss = round(self.stop_loss / self.tick_size) * self.tick_size
+                emergency_sl = self.long_entry_price - (self.initial_sl_ticks * self.tick_size) if self.long_entry_price else self.day_low - 1e-8
+                # Use Decimal precision to avoid floating-point errors
+                emergency_sl = float(Decimal(str(emergency_sl / self.tick_size)).quantize(Decimal('1'), rounding=ROUND_HALF_UP) * Decimal(str(self.tick_size)))
+                with self._state_lock:
+                    self.stop_loss = emergency_sl
                 log_event({
                     'timestamp': ts.isoformat(),
                     'date': ts.date().isoformat(),
                     'time': ts.time().isoformat(),
                     'event': 'Emergency SL Set',
                     'symbol': self.symbol,
-                    'price': self.stop_loss,
-                    'details': f"Stop loss was None, setting emergency SL: {self.stop_loss}"
+                    'price': emergency_sl,
+                    'details': f"Stop loss was None, setting emergency SL: {emergency_sl}"
                 })
                 # Place the missing broker SL order
-                self.place_or_update_sell_stop(self.stop_loss, ts)
+                self.place_or_update_sell_stop(emergency_sl, ts)
             
             # Emergency failsafe: if broker-held SL order is missing, place it
-            # Skip if sl_order_id is "PENDING" (order placement in progress)
-            elif not self.sl_order_id or self.sl_order_id == "PENDING":
-                # Only trigger emergency if sl_order_id is None (not PENDING)
-                if self.sl_order_id is None:
-                    logger.warning(f"[{self.symbol}] In position but no broker SL order! Placing emergency SL.")
-                    log_event({
-                        'timestamp': ts.isoformat(),
-                        'date': ts.date().isoformat(),
-                        'time': ts.time().isoformat(),
-                        'event': 'Emergency SL Order Placed',
-                        'symbol': self.symbol,
-                        'price': self.stop_loss,
-                        'details': f"Broker SL order missing, placing at {self.stop_loss}"
-                    })
-                    self.place_or_update_sell_stop(self.stop_loss, ts)
+            elif sl_order_missing:
+                logger.warning(f"[{self.symbol}] In position but no broker SL order! Placing emergency SL.")
+                log_event({
+                    'timestamp': ts.isoformat(),
+                    'date': ts.date().isoformat(),
+                    'time': ts.time().isoformat(),
+                    'event': 'Emergency SL Order Placed',
+                    'symbol': self.symbol,
+                    'price': current_stop_loss,
+                    'details': f"Broker SL order missing, placing at {current_stop_loss}"
+                })
+                self.place_or_update_sell_stop(current_stop_loss, ts)
 
 
     def place_buy_stop(self, ts=None):
@@ -282,18 +339,25 @@ class SymbolState:
         if ts is None:
             ts = datetime.datetime.now(timezone)
         
-        # CRITICAL: Check if already in position to prevent duplicate orders
-        if self.in_position:
-            logger.warning(f"[{self.symbol}] Skipping buy stop order: already in position")
-            return
+        # CRITICAL SECTION: Check all conditions atomically before placing order
+        logger.trace(f"[{self.symbol}] [TID:{threading.get_ident()}] Acquiring lock for place_buy_stop checks") if hasattr(logger, 'trace') else None
+        with self._state_lock:
+            # CRITICAL: Check if already in position to prevent duplicate orders
+            if self.in_position:
+                logger.warning(f"[{self.symbol}] [TID:{threading.get_ident()}] Skipping buy stop order: already in position")
+                return
+            
+            # CRITICAL: Check if there's already a pending entry order to prevent duplicates
+            # This handles race conditions where order fills but callback hasn't fired yet
+            if self.entry_order_id is not None and self.entry_order_id != "":
+                logger.warning(f"[{self.symbol}] [TID:{threading.get_ident()}] Skipping buy stop order: pending order {self.entry_order_id} already exists")
+                return
+            
+            # All checks passed - proceed with order placement
+            logger.debug(f"[{self.symbol}] [TID:{threading.get_ident()}] All checks passed, proceeding with buy stop order")
+            # No other thread can change in_position or entry_order_id until we set them
         
-        # CRITICAL: Check if there's already a pending entry order to prevent duplicates
-        # This handles race conditions where order fills but callback hasn't fired yet
-        if self.entry_order_id is not None and self.entry_order_id != "":
-            logger.warning(f"[{self.symbol}] Skipping buy stop order: pending order {self.entry_order_id} already exists")
-            return
-        
-        # Check if market is open
+        # Check if market is open (outside lock - doesn't access mutable state)
         if not is_market_open(ts, self.market_open_hour, self.market_open_minute, 
                               self.market_close_hour, self.market_close_minute):
             log_event({
@@ -305,7 +369,8 @@ class SymbolState:
                 'price': self.entry_price,
                 'details': f"Market not open yet. Will retry when market opens at {self.market_open_hour}:{self.market_open_minute:02d}"
             })
-            self.pending_retry = True  # Flag for retry when market opens
+            with self._state_lock:
+                self.pending_retry = True  # Flag for retry when market opens
             return
         
         try:
@@ -325,14 +390,17 @@ class SymbolState:
             
             # Check if order was rejected
             if response.get('status') == 'error':
-                self.order_rejected = True
-                self.last_rejection_time = ts
-                self.entry_order_id = None
-                self.retry_count += 1
+                with self._state_lock:
+                    self.order_rejected = True
+                    self.last_rejection_time = ts
+                    self.entry_order_id = None
+                    self.retry_count += 1
+                    retry_count_copy = self.retry_count
                 
-                # Check if we've exceeded retry limit
-                if self.max_order_retries is not None and self.retry_count >= self.max_order_retries:
-                    self.pending_retry = False
+                # Check if we've exceeded retry limit (use local copy)
+                if self.max_order_retries is not None and retry_count_copy >= self.max_order_retries:
+                    with self._state_lock:
+                        self.pending_retry = False
                     log_event({
                         'timestamp': ts.isoformat(),
                         'date': ts.date().isoformat(),
@@ -343,8 +411,9 @@ class SymbolState:
                         'details': f"Response: {response}. Max retries ({self.max_order_retries}) reached. Giving up."
                     })
                 else:
-                    self.pending_retry = True
-                    retry_info = f"retry {self.retry_count}/{self.max_order_retries if self.max_order_retries else 'unlimited'}"
+                    with self._state_lock:
+                        self.pending_retry = True
+                    retry_info = f"retry {retry_count_copy}/{self.max_order_retries if self.max_order_retries else 'unlimited'}"
                     log_event({
                         'timestamp': ts.isoformat(),
                         'date': ts.date().isoformat(),
@@ -356,16 +425,19 @@ class SymbolState:
                     })
             else:
                 # Accept multiple possible keys for order id returned by SDK
-                self.entry_order_id = (
+                order_id = (
                     response.get('order_id') or response.get('orderid') or
                     response.get('orderId') or response.get('data', {}).get('order_id')
                 )
-                self.order_placed_time = ts  # Track when order was placed
-                self.order_rejected = False
-                self.pending_retry = False
-                # Reset retry count on successful order placement
-                retry_info = f" (after {self.retry_count} retries)" if self.retry_count > 0 else ""
-                self.retry_count = 0
+                with self._state_lock:
+                    self.entry_order_id = order_id
+                    self.order_placed_time = ts  # Track when order was placed
+                    self.order_rejected = False
+                    self.pending_retry = False
+                    # Reset retry count on successful order placement
+                    retry_info = f" (after {self.retry_count} retries)" if self.retry_count > 0 else ""
+                    self.retry_count = 0
+                    order_id_copy = self.entry_order_id
                 log_event({
                     'timestamp': ts.isoformat(),
                     'date': ts.date().isoformat(),
@@ -373,14 +445,15 @@ class SymbolState:
                     'event': 'Buy Stop Order Placed',
                     'symbol': self.symbol,
                     'price': self.entry_price,
-                    'details': f"Response: {response}; order_id={self.entry_order_id}{retry_info}"
+                    'details': f"Response: {response}; order_id={order_id_copy}{retry_info}"
                 })
         except Exception as e:
             logger.error(f"[{self.symbol}] Error placing buy stop: {e}")
-            self.order_rejected = True
-            self.last_rejection_time = ts
-            self.entry_order_id = None
-            self.retry_count += 1
+            with self._state_lock:
+                self.order_rejected = True
+                self.last_rejection_time = ts
+                self.entry_order_id = None
+                self.retry_count += 1
     
     def place_sell_market(self):
         if not self.in_position:  # Extra check to prevent selling when not in position
@@ -451,21 +524,26 @@ class SymbolState:
         if ts is None:
             ts = datetime.datetime.now(timezone)
         
-        # Safety checks
-        if not self.in_position:
-            logger.warning(f"[{self.symbol}] Cannot place/update SL: not in position")
-            return
-        if new_stop is None:
-            logger.warning(f"[{self.symbol}] Cannot place/update SL: new_stop is None")
-            return
+        # Round to tick size using Decimal precision to avoid floating-point errors
+        new_stop = float(Decimal(str(new_stop / self.tick_size)).quantize(Decimal('1'), rounding=ROUND_HALF_UP) * Decimal(str(self.tick_size)))
         
-        # Round to tick size
-        new_stop = round(float(new_stop) / self.tick_size) * self.tick_size
-        
-        # Skip if new_stop equals current stop_loss (no change needed)
-        if self.stop_loss is not None and abs(new_stop - self.stop_loss) < 1e-9:
-            logger.debug(f"[{self.symbol}] Skipping SL update: new_stop ({new_stop}) equals current stop_loss ({self.stop_loss})")
-            return
+        # CRITICAL SECTION: Check all conditions atomically
+        with self._state_lock:
+            # Safety checks
+            if not self.in_position:
+                logger.warning(f"[{self.symbol}] Cannot place/update SL: not in position")
+                return
+            if new_stop is None:
+                logger.warning(f"[{self.symbol}] Cannot place/update SL: new_stop is None")
+                return
+            
+            # Skip if new_stop equals current stop_loss (no change needed)
+            if self.stop_loss is not None and abs(new_stop - self.stop_loss) < 1e-9:
+                logger.debug(f"[{self.symbol}] Skipping SL update: new_stop ({new_stop}) equals current stop_loss ({self.stop_loss})")
+                return
+            
+            # Copy sl_order_id for use outside lock
+            current_sl_order_id = self.sl_order_id
         
         try:
             # If we have an existing SL order, try to modify it
@@ -597,32 +675,41 @@ class SymbolState:
             fill_price = (update.get('fill_price') or update.get('average_price') or 
                          update.get('avgprice') or update.get('averagePrice'))
             if not fill_price:
-                logger.error(f"[{self.symbol}] No fill_price in order update: {update}")
+                logger.error(f"[{self.symbol}] [TID:{threading.get_ident()}] No fill_price in order update: {update}")
                 return
             fill_price = float(fill_price)
             
-            self.in_position = True
-            self.long_entry_price = fill_price
-            # New SL calculation: entry_price - (initial_sl_ticks * tick_size)
-            self.stop_loss = fill_price - (self.initial_sl_ticks * self.tick_size)
-            # Round SL to nearest tick to prevent order rejections
-            self.stop_loss = round(self.stop_loss / self.tick_size) * self.tick_size
-            # Recompute risk using rounded SL
-            risk = fill_price - self.stop_loss
-            # Calculate TP from risk and round to nearest tick
-            self.take_profit = fill_price + self.take_profit_mult * risk if self.use_take_profit else None
-            if self.take_profit is not None:
-                self.take_profit = round(self.take_profit / self.tick_size) * self.tick_size
-            # Count this entry only once per unique filled order id
-            if self.last_filled_entry_order_id != order_id:
-                self.entries_today += 1
-                self.last_filled_entry_order_id = order_id
-            # Clear any pending retry since entry succeeded
-            self.pending_retry = False
-            # CRITICAL: Clear entry_order_id after fill to prevent re-arm logic from being blocked
-            # The re-arm logic checks entry_order_id is None before placing new orders
-            # Without this, the strategy cannot re-enter after an exit
-            self.entry_order_id = None
+            # CRITICAL SECTION: Acquire lock to prevent polling thread from interfering
+            # during position state transition
+            logger.trace(f"[{self.symbol}] [TID:{threading.get_ident()}] Acquiring lock for entry fill state transition") if hasattr(logger, 'trace') else None
+            with self._state_lock:
+                logger.info(f"[{self.symbol}] [TID:{threading.get_ident()}] Setting in_position=True for order {order_id}")
+                self.in_position = True
+                self.long_entry_price = fill_price
+                # New SL calculation: entry_price - (initial_sl_ticks * tick_size)
+                self.stop_loss = fill_price - (self.initial_sl_ticks * self.tick_size)
+                # Round SL to nearest tick using Decimal precision to prevent floating-point errors and broker rejections
+                self.stop_loss = float(Decimal(str(self.stop_loss / self.tick_size)).quantize(Decimal('1'), rounding=ROUND_HALF_UP) * Decimal(str(self.tick_size)))
+                # Recompute risk using rounded SL
+                risk = fill_price - self.stop_loss
+                # Calculate TP from risk and round to nearest tick using Decimal precision
+                self.take_profit = fill_price + self.take_profit_mult * risk if self.use_take_profit else None
+                if self.take_profit is not None:
+                    self.take_profit = float(Decimal(str(self.take_profit / self.tick_size)).quantize(Decimal('1'), rounding=ROUND_HALF_UP) * Decimal(str(self.tick_size)))
+                # Count this entry only once per unique filled order id
+                if self.last_filled_entry_order_id != order_id:
+                    self.entries_today += 1
+                    self.last_filled_entry_order_id = order_id
+                    
+                    # ANOMALY MONITORING: Detect if entries_today exceeds max_attempts unexpectedly
+                    if self.max_attempts is not None and self.entries_today > self.max_attempts:
+                        logger.error(f"[{self.symbol}] [TID:{threading.get_ident()}] ANOMALY DETECTED: entries_today ({self.entries_today}) EXCEEDS max_attempts ({self.max_attempts})! This should never happen - indicates race condition or logic bug!")
+                # Clear any pending retry since entry succeeded
+                self.pending_retry = False
+                # CRITICAL: Clear entry_order_id after fill to prevent re-arm logic from being blocked
+                # The re-arm logic checks entry_order_id is None before placing new orders
+                # Without this, the strategy cannot re-enter after an exit
+                self.entry_order_id = None
             
             # Log with detailed info
             logger.info(f"[{self.symbol}] Entry filled at {fill_price}, initial_sl_ticks={self.initial_sl_ticks}, risk={risk}, SL={self.stop_loss}, TP={self.take_profit}")
@@ -652,9 +739,11 @@ class SymbolState:
                 'price': update.get('fill_price') or 0,
                 'details': f"Broker-held Sell Stop filled; order_id={self.sl_order_id}"
             })
-            self.sl_order_id = None
-            self.processed_order_ids.add(order_id)
-            self.reset_after_exit()
+            # CRITICAL SECTION: Acquire lock before clearing position state
+            with self._state_lock:
+                self.sl_order_id = None
+                self.processed_order_ids.add(order_id)
+                self.reset_after_exit()
 
     def cancel_order(self, order_id, ts=None):
         """Cancel a pending order. Returns True on success, False on failure.
@@ -743,6 +832,12 @@ class SymbolState:
             return False
     
     def reset_after_exit(self):
+        """Reset symbol state after position exit.
+        
+        CRITICAL: This method MUST be called with self._state_lock held!
+        It modifies multiple shared state variables atomically.
+        """
+        # Note: Lock MUST be held by caller - we don't acquire it here to avoid nested locks
         self.in_position = False
         self.long_entry_price = None
         self.stop_loss = None
@@ -758,3 +853,4 @@ class SymbolState:
         # Keep processed_order_ids bounded; clear on full reset to avoid growth
         self.processed_order_ids.clear()
         # Re-entry limit enforced via entries_today/max_attempts
+        logger.debug(f"[{self.symbol}] [TID:{threading.get_ident()}] State reset after exit")
