@@ -130,7 +130,6 @@ def do_live(cfg: Dict[str, Any]) -> None:
     market_open_minute = int(live_cfg.get("market_open_minute", 15))
     market_close_hour = int(live_cfg.get("market_close_hour", 15))
     market_close_minute = int(live_cfg.get("market_close_minute", 30))
-    fixed_qty = int(live_cfg.get("fixed_qty", 1))
     product_type = live_cfg.get("product_type", "MIS")
     order_validity = live_cfg.get("order_validity", "DAY")
     max_order_retries = live_cfg.get("max_order_retries", 3)
@@ -175,7 +174,7 @@ def do_live(cfg: Dict[str, Any]) -> None:
 
     print(f"[Live] strategy={strategy_name} (using precomputed setups)")
     print(f"[Live] timezone={timezone} market_hours={market_open_hour}:{market_open_minute:02d}-{market_close_hour}:{market_close_minute:02d}")
-    print(f"[Live] fixed_qty={fixed_qty} product_type={product_type} max_order_retries={max_order_retries}")
+    print(f"[Live] product_type={product_type} max_order_retries={max_order_retries}")
     
     # Phase 1: Use pre-configured setups only
     import pandas as pd
@@ -183,11 +182,10 @@ def do_live(cfg: Dict[str, Any]) -> None:
     setups_df = pd.DataFrame(provided_setups)
     
     # Validate required columns
-    required_cols = ['symbol', 'entry_price', 'trigger_price', 'tick_size', 'true_range']
+    required_cols = ['symbol', 'entry_price', 'trigger_price', 'tick_size', 'true_range', 'qty']
     missing_cols = [col for col in required_cols if col not in setups_df.columns]
     if missing_cols:
-        print(f"Error: Pre-configured setups missing required columns: {missing_cols}")
-        sys.exit(1)
+        raise ValueError(f"Pre-configured setups missing required columns: {missing_cols}")
     
     print(f"[Live] Loaded {len(setups_df)} pre-configured setup(s)")
     
@@ -213,7 +211,6 @@ def do_live(cfg: Dict[str, Any]) -> None:
         market_open_minute=market_open_minute,
         market_close_hour=market_close_hour,
         market_close_minute=market_close_minute,
-        fixed_qty=fixed_qty,
         product_type=product_type,
         order_validity=order_validity,
         max_attempts=max_attempts,

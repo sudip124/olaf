@@ -301,7 +301,7 @@ def recover_state_from_broker():
 
 
 def load_setups(setups_df, market_open_hour, market_open_minute, market_close_hour, market_close_minute,
-                fixed_qty, product_type, take_profit_mult, initial_sl_ticks, 
+                product_type, take_profit_mult, initial_sl_ticks, 
                 use_take_profit, trigger_window_minutes, max_attempts, max_order_retries,
                 order_timeout_minutes=None, exit_before_close_minutes=None,
                 ignore_initial_minutes: int = 1):
@@ -309,6 +309,15 @@ def load_setups(setups_df, market_open_hour, market_open_minute, market_close_ho
     instruments = []
     for _, setup in setups_df.iterrows():
         symbol = setup['symbol']
+        # Enforce qty presence and validity
+        if 'qty' not in setup or pd.isna(setup['qty']):
+            raise ValueError(f"Missing 'qty' in setup for symbol {symbol}")
+        try:
+            qty = int(setup['qty'])
+        except Exception:
+            raise ValueError(f"Invalid 'qty' value for symbol {symbol}: {setup['qty']}")
+        if qty <= 0:
+            raise ValueError(f"Qty must be > 0 for symbol {symbol}, got {qty}")
         symbol_states[symbol] = SymbolState(
             symbol=symbol,
             entry_price=setup['entry_price'],
@@ -319,7 +328,7 @@ def load_setups(setups_df, market_open_hour, market_open_minute, market_close_ho
             market_open_minute=market_open_minute,
             market_close_hour=market_close_hour,
             market_close_minute=market_close_minute,
-            fixed_qty=fixed_qty,
+            qty=qty,
             product_type=product_type,
             take_profit_mult=take_profit_mult,
             initial_sl_ticks=initial_sl_ticks,
@@ -471,7 +480,6 @@ class Live8020(LiveStrategy):
         market_open_minute: int = 15,
         market_close_hour: int = 15,
         market_close_minute: int = 30,
-        fixed_qty: int = 1,
         product_type: str = 'MIS',
         order_validity: str = 'DAY',
         max_attempts: Optional[int] = None,
@@ -516,7 +524,7 @@ class Live8020(LiveStrategy):
             live_run_id = save_live_run(
                 symbols=setups_df['symbol'].tolist(),
                 timezone=timezone_str,
-                fixed_qty=fixed_qty,
+                fixed_qty=1,  # Placeholder, actual qty is per-symbol in setups
                 product_type=product_type,
                 take_profit_mult=take_profit_mult_param,
                 use_take_profit=use_take_profit_param,
@@ -535,7 +543,6 @@ class Live8020(LiveStrategy):
             market_open_minute=market_open_minute,
             market_close_hour=market_close_hour,
             market_close_minute=market_close_minute,
-            fixed_qty=fixed_qty,
             product_type=product_type,
             take_profit_mult=take_profit_mult_param,
             initial_sl_ticks=initial_sl_ticks_param,
@@ -559,7 +566,12 @@ class Live8020(LiveStrategy):
         recover_state_from_broker()
         
         # Start polling thread for order statuses and positions
-        polling_thread = threading.Thread(target=poll_orders_and_positions, daemon=True)
+        # Pass all required arguments explicitly to avoid TypeError
+        polling_thread = threading.Thread(
+            target=poll_orders_and_positions,
+            args=(client, symbol_states, timezone, logger, log_event),
+            daemon=True,
+        )
         polling_thread.start()
         
         # Wait for session start if early

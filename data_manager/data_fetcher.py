@@ -45,12 +45,13 @@ def fetch_historical_data(symbol, interval, from_date, to_date):
     """
     Fetch OHLCV data: prefer local nse.db if it fully covers the requested date range
     (based on MIN/MAX date check). If not (table missing, partial coverage, or gaps assumed absent),
-    fetch from OpenAlgo, cache into DB (INSERT OR IGNORE to avoid duplicates), then return
+    fetch from OpenAlgo, cache into DB (UPSERT to update existing records), then return
     the data for the exact range from DB for consistency.
     
     - Normalizes interval for API (e.g., '15 minute' -> '15m').
     - Uses 'd' for daily tables in DB for consistency (compatible with existing '_D' via fallback).
-    - Creates table + indexes if needed .
+    - Creates table + indexes if needed.
+    - Uses ON CONFLICT DO UPDATE to handle duplicates (updates with latest data).
     - Returns pandas DF with DatetimeIndex, columns: open, high, low, close, volume.
     - If SAVE_TO_LOGS is True, saves newly downloaded data (from API) to logs/ as CSV.
     """
@@ -180,9 +181,16 @@ def fetch_historical_data(symbol, interval, from_date, to_date):
     df_insert['volume'] = df_insert['volume'].astype(int)
 
     insert_sql = f'''
-    INSERT OR IGNORE INTO "{table_name}"
+    INSERT INTO "{table_name}"
     (date, time, open, high, low, close, volume, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(date, time) DO UPDATE SET
+        open = excluded.open,
+        high = excluded.high,
+        low = excluded.low,
+        close = excluded.close,
+        volume = excluded.volume,
+        created_at = excluded.created_at
     '''
 
     data_tuples = list(df_insert[

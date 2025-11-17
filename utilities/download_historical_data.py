@@ -26,44 +26,39 @@ from data_manager.data_fetcher import fetch_historical_data
 
 # Symbols to download (can be a single symbol or list of symbols)
 SYMBOLS = [
-            "AUBANK",
-            "APTUS",
-            "ASHOKLEY",
-            "ATHERENERG",
-            "DMART",
-            "CUB",
-            "NYKAA",
-            "GPIL",
-            "GRASIM",
-            "HEG",
-            "HBLENGINE",
-            "HSCL",
-            "HAL",
-            "HINDCOPPER",
-            "HINDZINC",
-            "JSL",
-            "M&MFIN",
-            "NAVA",
-            "NAVINFLUOR",
-            "POLICYBZR",
-            "PIIND",
-            "PVRINOX",
-            "PRESTIGE",
-            "SAIL",
-            "TATASTEEL",
-            "TORNTPOWER",
-            "UTIAMC",
-            "VBL"
+            "ADANIPOWER",
+            "ATGL",
+            "AFCONS",
+            "ASTRAL",
+            "BAJAJHFL",
+            "BATAINDIA",
+            "CHOLAFIN",
+            "DABUR",
+            "IGIL",
+            "JUBLFOOD",
+            "KAYNES",
+            "LLOYDSME",
+            "MANKIND",
+            "MPHASIS",
+            "NEWGEN",
+            "RAINBOW",
+            "SCI",
+            "TORNTPHARM",
+            "VEDL",
+            "VIJAYA",
+            "WAAREEENER",
+            "WELCORP",
+            "ZYDUSLIFE"
         ]
 # Or use a single symbol: SYMBOLS = ["RELIANCE"]
 
 # Interval: '1m', '3m', '5m', '15m', '30m', '1h', '1d', etc.
 # For intraday (minute/hour), use format like '15 minute' or '15m'
-INTERVAL = "D"
+INTERVAL = "15m"
 
 # Date range (format: 'YYYY-MM-DD')
-FROM_DATE = "2024-01-01"
-TO_DATE = "2025-11-12"
+FROM_DATE = "2024-04-01"
+TO_DATE = "2025-03-31"
 
 # Rate limiting: max calls per second (broker allows 3)
 MAX_CALLS_PER_SECOND = 3

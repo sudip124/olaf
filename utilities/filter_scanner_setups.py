@@ -28,8 +28,16 @@ BACKUP_DIR = ROOT / "logs"
 # ================================
 ALLOWED_SYMBOLS = [
     # Example: add your symbols here
-    "M&M", "SCHNEIDER", "IRB", "SARDAEN", "SAGILITY", "SRF"
+    "KIMS",
+    "ABSLAMC",
+    "GODIGIT",
+    "NSLNISP"
 ]
+
+# ================================
+# EDIT: Default quantity per symbol
+# ================================
+DEFAULT_QTY = 5
 
 
 def main() -> None:
@@ -82,6 +90,10 @@ def main() -> None:
 
     filtered = [best_by_symbol[s] for s in sorted(best_by_symbol.keys())]
     after = len(filtered)
+
+    # Add default qty to each setup
+    for setup in filtered:
+        setup['qty'] = DEFAULT_QTY
 
     # Load run_config
     try:

@@ -17,7 +17,7 @@ is_market_open = None
 class SymbolState:
     def __init__(self, symbol, entry_price, trigger_price, tick_size, true_range,
                  market_open_hour, market_open_minute, market_close_hour, market_close_minute,
-                 fixed_qty, product_type, take_profit_mult, initial_sl_ticks, 
+                 qty, product_type, take_profit_mult, initial_sl_ticks, 
                  use_take_profit, trigger_window_minutes, max_attempts, max_order_retries,
                  order_timeout_minutes=None, exit_before_close_minutes=None,
                  ignore_initial_minutes: int = 1):
@@ -35,7 +35,7 @@ class SymbolState:
         self.market_open_minute = market_open_minute
         self.market_close_hour = market_close_hour
         self.market_close_minute = market_close_minute
-        self.fixed_qty = fixed_qty
+        self.qty = qty
         self.product_type = product_type
         self.take_profit_mult = take_profit_mult
         self.initial_sl_ticks = initial_sl_ticks
@@ -383,7 +383,7 @@ class SymbolState:
                 action='BUY',
                 product=self.product_type,
                 price_type='SL',
-                quantity=self.fixed_qty,
+                quantity=self.qty,
                 price=self.entry_price,  # Limit price (same as trigger for immediate execution)
                 trigger_price=self.entry_price  # Trigger price
             )
@@ -467,7 +467,7 @@ class SymbolState:
                 action='SELL',  # Uppercase
                 product=self.product_type,
                 price_type='MARKET',  # Changed from 'order_type'
-                quantity=self.fixed_qty,
+                quantity=self.qty,
                 price=0,
                 trigger_price=0
             )
@@ -493,7 +493,7 @@ class SymbolState:
                 action='BUY',
                 product=self.product_type,
                 price_type='MARKET',
-                quantity=self.fixed_qty,
+                quantity=self.qty,
                 price=0,
                 trigger_price=0
             )
@@ -571,7 +571,7 @@ class SymbolState:
                             action='SELL',
                             product=self.product_type,
                             price_type='SL',
-                            quantity=self.fixed_qty,
+                            quantity=self.qty,
                             price=new_stop,
                             trigger_price=new_stop
                         )
@@ -614,7 +614,7 @@ class SymbolState:
                 action='SELL',
                 product=self.product_type,
                 price_type='SL',
-                quantity=self.fixed_qty,
+                quantity=self.qty,
                 price=new_stop,
                 trigger_price=new_stop
             )
